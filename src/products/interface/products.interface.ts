@@ -3,15 +3,23 @@ export interface CreateProductResponse {
   name: string;
 }
 
-export interface ProductsBySeller {
+export interface ProductsItem {
+  id: string;
+  name: string;
+  price: number;
+  image_url: string | null;
+
+  rating?: number;
+  sold?: number;
+  store_type?: string;
+
+  /** Flash Sale only */
+  stock?: number;
+  max_per_user?: number;
+}
+
+export interface ProductsResponse {
   page: number;
-  total: number;
-  products: [
-    {
-      id: string;
-      name: string;
-      price: number;
-      image_url: string;
-    },
-  ];
+  totalPages: number;
+  products: ProductsItem[];
 }

@@ -1,13 +1,15 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { HttpExceptionFilter } from './common/interceptors/http-exception.filter';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -16,6 +18,9 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
 
   app.use(cookieParser());
   app.useGlobalInterceptors(new ResponseInterceptor());

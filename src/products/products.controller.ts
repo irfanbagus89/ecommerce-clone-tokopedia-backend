@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -35,5 +37,41 @@ export class ProductsController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.productService.create(dto, req.user.userId, image);
+  }
+
+  @Get('/official')
+  @HttpCode(200)
+  getProductOfficial(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.productService.getProductOfficial(Number(page), Number(limit));
+  }
+  @Get('/flashsale')
+  @HttpCode(200)
+  getFlashSaleProducts(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.productService.getFlashSaleProducts(
+      Number(page),
+      Number(limit),
+    );
+  }
+  @Get('/foryou')
+  @HttpCode(200)
+  getForYouProducts(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.productService.getForYouProducts(Number(page), Number(limit));
+  }
+  @Get('/promo')
+  @HttpCode(200)
+  getPromoProducts(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.productService.getPromoProducts(Number(page), Number(limit));
   }
 }

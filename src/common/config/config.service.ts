@@ -7,6 +7,7 @@ interface EnvironmentVariables {
   JWT_SECRET: string;
   JWT_EXPIRES_IN: string;
   NODE_ENV: string;
+  DOMAIN_PROD: string;
 }
 
 @Injectable()
@@ -33,5 +34,8 @@ export class ConfigService {
 
   get nodeEnv(): string {
     return this.get('NODE_ENV');
+  }
+  get getDomainProd(): string {
+    return this.get('DOMAIN_PROD');
   }
 }
