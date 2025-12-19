@@ -17,6 +17,7 @@ import { JwtAuthGuard } from 'src/auth/jwt.guard';
 import { JwtPayload } from 'src/auth/jwt.strategy';
 import { RolesGuard } from 'src/auth/roles/roles.guard';
 import { Roles } from 'src/auth/roles/roles.decorator';
+import { IntentparserService } from 'src/intentparser/intentparser.service';
 
 interface AuthenticatedRequest extends Request {
   user: JwtPayload;
@@ -24,7 +25,10 @@ interface AuthenticatedRequest extends Request {
 
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productService: ProductsService) {}
+  constructor(
+    private readonly productService: ProductsService,
+    private readonly intentParser: IntentparserService,
+  ) {}
 
   @Post()
   @Roles('seller')
@@ -37,6 +41,53 @@ export class ProductsController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.productService.create(dto, req.user.userId, image);
+  }
+
+  @Get('search')
+  @HttpCode(200)
+  async getProductsSearch(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Query('search') search: string = '',
+  ) {
+    if (!search || search.length < 3) {
+      return this.productService.getProducts(
+        Number(page),
+        Number(limit),
+        search,
+      );
+    }
+    console.log('aman');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const parsed = await this.intentParser.parse(search);
+    console.log('aman2', search);
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    if (!parsed || parsed.intent === 'unknown') {
+      return this.productService.getProducts(
+        Number(page),
+        Number(limit),
+        search,
+      );
+    }
+    console.log('aman3', parsed);
+
+    return this.productService.getProductsWithIntent(
+      Number(page),
+      Number(limit),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      parsed,
+    );
+  }
+
+  @Get()
+  @HttpCode(200)
+  async getProducts(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Query('search') search: string = '',
+  ) {
+    return this.productService.getProducts(Number(page), Number(limit), search);
   }
 
   @Get('/official')

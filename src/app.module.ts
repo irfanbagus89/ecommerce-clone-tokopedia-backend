@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { SellerModule } from './seller/seller.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
+import { IntentParserModule } from './intentparser/intentparser.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ProductsModule } from './products/products.module';
     SellerModule,
     CategoriesModule,
     ProductsModule,
+    IntentParserModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -2,24 +2,42 @@ export interface CreateProductResponse {
   id: string;
   name: string;
 }
+export interface FlashSaleInfo {
+  isActive: boolean;
+  stockProgress: number; // persen
+  statusText: string;
+}
 
 export interface ProductsItem {
   id: string;
   name: string;
+  image_url: string;
+
   price: number;
-  image_url: string | null;
+  original_price?: number | null;
+  discount?: number | null;
 
   rating?: number;
   sold?: number;
-  store_type?: string;
-
-  /** Flash Sale only */
   stock?: number;
-  max_per_user?: number;
+  location?: string;
+
+  flashSale?: FlashSaleInfo;
 }
 
 export interface ProductsResponse {
   page: number;
   totalPages: number;
   products: ProductsItem[];
+}
+
+export interface ParsedQuery {
+  intent: 'product_search' | 'product_price' | 'unknown';
+  entities: {
+    product_name?: string | null;
+    keywords?: string[] | null;
+    variant_keywords?: string[] | null;
+    min_price?: number | null;
+    max_price?: number | null;
+  };
 }
