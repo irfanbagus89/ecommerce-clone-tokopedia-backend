@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Param,
   Post,
   Query,
   Req,
@@ -86,5 +87,10 @@ export class ProductsController {
     @Query('limit') limit: number = 10,
   ) {
     return this.productService.getPromoProducts(Number(page), Number(limit));
+  }
+  @Get('/:id')
+  @HttpCode(200)
+  getProductDetail(@Param('id') id: string) {
+    return this.productService.getProductDetail(id);
   }
 }

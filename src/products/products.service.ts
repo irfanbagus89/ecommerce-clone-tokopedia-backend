@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { CreateDto } from './dto/create.dto';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import {
   CreateProductResponse,
-  ParsedQuery,
+  ProductDetailResponse,
   ProductsItem,
   ProductsResponse,
 } from './interface/products.interface';
@@ -75,6 +75,142 @@ export class ProductsService {
       name: createProduct.rows[0].name,
     };
     return result;
+  }
+
+  async getProductDetail(id: string): Promise<ProductDetailResponse> {
+    const productResult = await this.db.query<ProductsItem>(
+      `
+    SELECT
+      p.id,
+      p.name,
+      p.description,
+      p.price,
+      p.original_price,
+      p.image_url,
+      p.image_url_2,
+      p.image_url_3,
+      p.image_url_4,
+      p.image_url_5,
+      s.id AS seller_id,
+      s.store_name,
+      s.verified,
+      s.seller_location,
+      st.name AS store_type,
+      c.id AS category_id,
+      c.name AS category_name,
+      c.parent_id AS category_parent_id
+    FROM products p
+    JOIN sellers s ON s.id = p.seller_id
+    LEFT JOIN store_type st ON st.id = s.store_type_id
+    JOIN categories c ON c.id = p.category_id
+    WHERE p.id = $1
+    `,
+      [id],
+    );
+    const product = productResult.rows[0];
+    if (!product) {
+      throw new NotFoundException('Product tidak ditemukan');
+    }
+    const variantResult = await this.db.query<{
+      id: string;
+      name: string;
+      price: number;
+      stock: number;
+    }>(
+      `
+      SELECT
+        pv.id,
+        pv.variant_name AS name,
+        pv.additional_price AS price,
+        pv.stock
+      FROM product_variants pv
+      JOIN products p ON p.id = pv.product_id
+      WHERE pv.product_id = $1;
+    `,
+      [id],
+    );
+    const ratingResult = await this.db.query<{
+      average: number;
+      count: number;
+    }>(
+      `
+    SELECT
+      ROUND(AVG(rating), 1) AS average,
+      COUNT(*) AS count
+    FROM reviews
+    WHERE product_id = $1
+    `,
+      [id],
+    );
+    const soldResult = await this.db.query<{ sold_count: number }>(
+      `
+    SELECT
+      COALESCE(SUM(oi.quantity), 0) AS sold_count
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE oi.product_id = $1
+    AND o.status IN ('paid', 'shipped', 'completed')
+    `,
+      [id],
+    );
+
+    const stockResult = await this.db.query<{ total_stock: number }>(
+      `
+    SELECT COALESCE(SUM(stock), 0) AS total_stock
+    FROM product_variants
+    WHERE product_id = $1
+    `,
+      [id],
+    );
+
+    return {
+      id: product.id,
+      name: product.name,
+      description: product.description || '',
+      price: product.price ? Number(product.price) : null,
+      original_price: product.original_price,
+      discount_percent: product.price
+        ? Math.round(
+            ((product.original_price - product.price) /
+              product.original_price) *
+              100,
+          )
+        : null,
+
+      rating: {
+        average: Number(ratingResult.rows[0]?.average || 0),
+        count: Number(ratingResult.rows[0]?.count || 0),
+      },
+      sold_count: Number(soldResult.rows[0]?.sold_count || 0),
+      stock: Number(stockResult.rows[0]?.total_stock || 0),
+      images: [
+        product.image_url,
+        product.image_url_2,
+        product.image_url_3,
+        product.image_url_4,
+        product.image_url_5,
+      ].filter((img): img is string => typeof img === 'string'),
+
+      variants: variantResult.rows.map((v) => ({
+        id: v.id,
+        name: v.name,
+        price: Number(v.price),
+        stock: Number(v.stock),
+      })),
+
+      seller: {
+        id: product.seller_id || '',
+        store_name: product.store_name || '',
+        verified: product.verified || false,
+        store_type: product.store_type || '',
+        location: product.seller_location || '',
+      },
+
+      category: {
+        id: product.category_id,
+        name: product.category_name || '',
+      },
+    };
   }
 
   async getProducts(
@@ -161,11 +297,9 @@ export class ProductsService {
         name: p.name,
         category_id: p.category_id,
         image_url: p.image_url,
-        price: Number(p.price),
-        originalPrice: p.original_price ? Number(p.original_price) : null,
-        discount: p.original_price
-          ? this.calcDiscount(p.price, p.original_price)
-          : null,
+        price: p.price ? Number(p.price) : null,
+        original_price: Number(p.original_price),
+        discount: p.price ? this.calcDiscount(p.price, p.original_price) : null,
         rating: Number(p.rating),
         sold: Number(p.sold),
         location: p.location,
@@ -238,11 +372,9 @@ export class ProductsService {
         name: p.name,
         category_id: p.category_id,
         image_url: p.image_url,
-        price: Number(p.price),
-        originalPrice: p.original_price ? Number(p.original_price) : null,
-        discount: p.original_price
-          ? this.calcDiscount(p.price, p.original_price)
-          : null,
+        price: p.price ? Number(p.price) : null,
+        original_price: Number(p.original_price),
+        discount: p.price ? this.calcDiscount(p.price, p.original_price) : null,
         rating: Number(p.rating),
         sold: Number(p.sold),
         location: p.location,
@@ -311,11 +443,9 @@ export class ProductsService {
         name: p.name,
         category_id: p.category_id,
         image_url: p.image_url,
-        price: Number(p.price),
-        originalPrice: p.original_price ? Number(p.original_price) : null,
-        discount: p.original_price
-          ? this.calcDiscount(p.price, p.original_price)
-          : null,
+        price: p.price ? Number(p.price) : null,
+        original_price: Number(p.original_price),
+        discount: p.price ? this.calcDiscount(p.price, p.original_price) : null,
         rating: Number(p.rating),
         sold: Number(p.sold),
         location: p.location,
@@ -394,9 +524,11 @@ export class ProductsService {
         name: p.name,
         category_id: p.category_id,
         image_url: p.image_url,
-        price: Number(p.price),
-        originalPrice: Number(p.original_price),
-        discount: this.calcDiscount(p.price, p.original_price ?? 0),
+        price: p.price ? Number(p.price) : null,
+        original_price: Number(p.original_price),
+        discount: p.price
+          ? this.calcDiscount(p.price, p.original_price ?? 0)
+          : null,
         rating: Number(p.rating),
         sold: Number(p.sold),
         location: p.location,
