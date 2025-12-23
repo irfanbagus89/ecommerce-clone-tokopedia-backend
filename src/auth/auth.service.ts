@@ -68,6 +68,33 @@ export class AuthService {
     return this.signToken(user.id, user.email, user.name, user.role);
   }
 
+  async lupaPassword(data: LoginDto): Promise<AuthResponse> {
+    const { rows } = await this.db.query<User>(
+      'SELECT * FROM "users" WHERE email = $1',
+      [data.email],
+    );
+    const user = rows[0];
+    if (!user) throw new UnauthorizedException('Email tidak ditemukan');
+
+    if (data.password.length < 8)
+      throw new BadRequestException('Password minimal 8 karakter');
+
+    const hash = await BcryptUtil.hashPassword(data.password);
+
+    const update = await this.db.query<User>(
+      'UPDATE "users" SET password = $1 WHERE id = $2 RETURNING id, email, name, role ',
+      [hash, user.id],
+    );
+
+    const updateUser = update.rows[0];
+    return this.signToken(
+      updateUser.id,
+      updateUser.email,
+      updateUser.name,
+      updateUser.role,
+    );
+  }
+
   async profile(userId: string): Promise<Profile> {
     const { rows } = await this.db.query<User>(
       'SELECT id, email, name FROM "users" WHERE id = $1',

@@ -32,6 +32,11 @@ export class AuthController {
     const data = await this.authService.register(dto);
     return data.user;
   }
+  @Post('lupa-password')
+  async lupaPassword(@Body() dto: LoginDto) {
+    const data = await this.authService.lupaPassword(dto);
+    return data.user;
+  }
 
   @Post('login')
   @HttpCode(200)
