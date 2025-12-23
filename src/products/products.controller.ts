@@ -43,51 +43,23 @@ export class ProductsController {
     return this.productService.create(dto, req.user.userId, image);
   }
 
-  @Get('search')
+  @Get()
   @HttpCode(200)
   async getProductsSearch(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
     @Query('search') search: string = '',
+    @Query('smart') smart: boolean = false,
   ) {
-    if (!search || search.length < 3) {
+    if (smart === false) {
       return this.productService.getProducts(
         Number(page),
         Number(limit),
         search,
       );
+    } else {
+      return 'tes';
     }
-    console.log('aman');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const parsed = await this.intentParser.parse(search);
-    console.log('aman2', search);
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    if (!parsed || parsed.intent === 'unknown') {
-      return this.productService.getProducts(
-        Number(page),
-        Number(limit),
-        search,
-      );
-    }
-    console.log('aman3', parsed);
-
-    return this.productService.getProductsWithIntent(
-      Number(page),
-      Number(limit),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      parsed,
-    );
-  }
-
-  @Get()
-  @HttpCode(200)
-  async getProducts(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
-    @Query('search') search: string = '',
-  ) {
-    return this.productService.getProducts(Number(page), Number(limit), search);
   }
 
   @Get('/official')
@@ -98,17 +70,7 @@ export class ProductsController {
   ) {
     return this.productService.getProductOfficial(Number(page), Number(limit));
   }
-  @Get('/flashsale')
-  @HttpCode(200)
-  getFlashSaleProducts(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
-  ) {
-    return this.productService.getFlashSaleProducts(
-      Number(page),
-      Number(limit),
-    );
-  }
+
   @Get('/foryou')
   @HttpCode(200)
   getForYouProducts(

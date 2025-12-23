@@ -2,17 +2,11 @@ export interface CreateProductResponse {
   id: string;
   name: string;
 }
-export interface FlashSaleInfo {
-  isActive: boolean;
-  stockProgress: number; // persen
-  statusText: string;
-}
-
 export interface ProductsItem {
   id: string;
   name: string;
   image_url: string;
-
+  category_id: string;
   price: number;
   original_price?: number | null;
   discount?: number | null;
@@ -21,8 +15,6 @@ export interface ProductsItem {
   sold?: number;
   stock?: number;
   location?: string;
-
-  flashSale?: FlashSaleInfo;
 }
 
 export interface ProductsResponse {
