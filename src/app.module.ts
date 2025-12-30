@@ -8,6 +8,7 @@ import { SellerModule } from './seller/seller.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
 import { IntentParserModule } from './intentparser/intentparser.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { IntentParserModule } from './intentparser/intentparser.module';
     CategoriesModule,
     ProductsModule,
     IntentParserModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
