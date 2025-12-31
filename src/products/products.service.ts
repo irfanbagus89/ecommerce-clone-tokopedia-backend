@@ -535,4 +535,71 @@ export class ProductsService {
       })),
     };
   }
+
+  async getRecommendationsProductByStore(
+    sellerId: string,
+    categoryId: string,
+    page: number,
+    limit: number,
+  ): Promise<ProductsResponse> {
+    const offset = (page - 1) * limit;
+
+    const productsData = await this.db.query<ProductsItem>(
+      `
+      SELECT
+        p.id,
+        p.name,
+        p.price,
+        p.original_price,
+        p.image_url,
+        p.category_id,
+        s.seller_location AS location,
+        COALESCE(AVG(r.rating), 0) AS rating,
+        COALESCE(SUM(oi.quantity), 0) AS sold
+      FROM products p
+      JOIN sellers s ON s.id = p.seller_id
+      JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN reviews r ON r.product_id = p.id
+      LEFT JOIN order_items oi ON oi.product_id = p.id
+      WHERE
+        p.seller_id = $1
+        and p.category_id = $2
+      GROUP BY p.id, s.seller_location
+      ORDER BY sold DESC
+      LIMIT $3 OFFSET $4;
+      `,
+      [sellerId, categoryId, limit, offset],
+    );
+
+    const totalResult = await this.db.query<{ total: number }>(
+      `
+        SELECT COUNT(*) AS total
+        FROM products p
+        JOIN sellers s ON s.id = p.seller_id
+        WHERE
+          p.seller_id = $1
+          and p.category_id = $2
+      `,
+      [sellerId, categoryId],
+    );
+    const total = Number(totalResult.rows[0].total);
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      page,
+      totalPages,
+      products: productsData.rows.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category_id: p.category_id,
+        image_url: p.image_url,
+        price: p.price ? Number(p.price) : null,
+        original_price: Number(p.original_price),
+        discount: p.price ? this.calcDiscount(p.price, p.original_price) : null,
+        rating: Number(p.rating),
+        sold: Number(p.sold),
+        location: p.location,
+      })),
+    };
+  }
 }
