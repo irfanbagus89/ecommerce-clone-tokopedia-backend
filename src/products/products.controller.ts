@@ -80,25 +80,20 @@ export class ProductsController {
   ) {
     return this.productService.getForYouProducts(Number(page), Number(limit));
   }
-  @Get('/promo')
-  @HttpCode(200)
-  getPromoProducts(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
-  ) {
-    return this.productService.getPromoProducts(Number(page), Number(limit));
-  }
+
   @Get('/recommendations-by-store')
   @HttpCode(200)
   getRecommendationsProductByStore(
     @Query('sellerId') sellerId: string,
     @Query('categoryId') categoryId: string,
+    @Query('id') id: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
     return this.productService.getRecommendationsProductByStore(
       sellerId,
       categoryId,
+      id,
       Number(page),
       Number(limit),
     );

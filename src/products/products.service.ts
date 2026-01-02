@@ -26,7 +26,11 @@ export class ProductsService {
   ) {}
 
   private calcDiscount(price: number, original: number) {
-    return Math.round(((original - price) / original) * 100);
+    if (price >= original) return 0;
+
+    const percent = ((original - price) / original) * 100;
+    console.log('percent', Math.round(percent));
+    return Math.max(1, Math.round(percent));
   }
 
   async create(
@@ -162,19 +166,15 @@ export class ProductsService {
     `,
       [id],
     );
-
+    console.log(product.original_price, product.price);
     return {
       id: product.id,
       name: product.name,
       description: product.description || '',
       price: product.price ? Number(product.price) : null,
-      original_price: product.original_price,
+      original_price: Number(product.original_price),
       discount_percent: product.price
-        ? Math.round(
-            ((product.original_price - product.price) /
-              product.original_price) *
-              100,
-          )
+        ? this.calcDiscount(product.price, product.original_price)
         : null,
 
       rating: {
@@ -453,92 +453,10 @@ export class ProductsService {
     };
   }
 
-  async getPromoProducts(
-    page: number,
-    limit: number,
-  ): Promise<ProductsResponse> {
-    const offset = (page - 1) * limit;
-
-    const productsData = await this.db.query<ProductsItem>(
-      `
-      SELECT
-        p.id,
-        p.name,
-        p.category_id,
-        p.price AS original_price,
-        p.image_url,
-        s.seller_location AS location,
-        (p.price - MAX(v.discount_value)) AS price,
-        COALESCE(AVG(r.rating), 0) AS rating,
-        COALESCE(SUM(oi.quantity), 0) AS sold
-      FROM vouchers v
-      JOIN products p
-        ON p.price >= COALESCE(v.min_purchase, 0)
-      JOIN sellers s ON s.id = p.seller_id
-      LEFT JOIN reviews r ON r.product_id = p.id
-      LEFT JOIN order_items oi ON oi.product_id = p.id
-      WHERE
-        v.active = true
-        AND v.start_date <= CURRENT_DATE
-        AND v.end_date >= CURRENT_DATE
-        AND EXISTS (
-          SELECT 1
-          FROM product_variants pv
-          WHERE pv.product_id = p.id
-            AND pv.stock > 0
-        )
-      GROUP BY p.id, s.seller_location
-      ORDER BY MAX(v.discount_value) DESC
-      LIMIT $1 OFFSET $2;
-      `,
-      [limit, offset],
-    );
-
-    const totalResult = await this.db.query<{ total: number }>(
-      `
-      SELECT COUNT(DISTINCT p.id) AS total
-      FROM vouchers v
-      JOIN products p
-        ON p.price >= COALESCE(v.min_purchase, 0)
-      WHERE
-        v.active = true
-        AND v.start_date <= CURRENT_DATE
-        AND v.end_date >= CURRENT_DATE
-        AND EXISTS (
-          SELECT 1
-          FROM product_variants pv
-          WHERE pv.product_id = p.id
-            AND pv.stock > 0
-        );
-      `,
-    );
-
-    const total = Number(totalResult.rows[0].total);
-    const totalPages = Math.ceil(total / limit);
-
-    return {
-      page,
-      totalPages,
-      products: productsData.rows.map((p) => ({
-        id: p.id,
-        name: p.name,
-        category_id: p.category_id,
-        image_url: p.image_url,
-        price: p.price ? Number(p.price) : null,
-        original_price: Number(p.original_price),
-        discount: p.price
-          ? this.calcDiscount(p.price, p.original_price ?? 0)
-          : null,
-        rating: Number(p.rating),
-        sold: Number(p.sold),
-        location: p.location,
-      })),
-    };
-  }
-
   async getRecommendationsProductByStore(
     sellerId: string,
     categoryId: string,
+    id: string,
     page: number,
     limit: number,
   ): Promise<ProductsResponse> {
@@ -564,11 +482,12 @@ export class ProductsService {
       WHERE
         p.seller_id = $1
         and p.category_id = $2
+        and p.id <> $3
       GROUP BY p.id, s.seller_location
       ORDER BY sold DESC
-      LIMIT $3 OFFSET $4;
+      LIMIT $4 OFFSET $5;
       `,
-      [sellerId, categoryId, limit, offset],
+      [sellerId, categoryId, id, limit, offset],
     );
 
     const totalResult = await this.db.query<{ total: number }>(
