@@ -9,6 +9,8 @@ import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
 import { IntentParserModule } from './intentparser/intentparser.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { OrdersModule } from './orders/orders.module';
+import { CartsModule } from './carts/carts.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { ReviewsModule } from './reviews/reviews.module';
     ProductsModule,
     IntentParserModule,
     ReviewsModule,
+    OrdersModule,
+    CartsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

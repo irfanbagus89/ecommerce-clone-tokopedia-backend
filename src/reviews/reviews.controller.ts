@@ -1,4 +1,11 @@
-import { Controller, Get, HttpCode, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Query,
+} from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
 
 @Controller('reviews')
@@ -8,7 +15,7 @@ export class ReviewsController {
   @Get(':id')
   @HttpCode(200)
   getReviewsById(
-    @Param('id') id: string = '',
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
     @Query('sort') sort: string = 'helpful',

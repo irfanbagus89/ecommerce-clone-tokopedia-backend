@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -100,13 +101,16 @@ export class ProductsController {
   }
   @Get('/:id')
   @HttpCode(200)
-  getProductDetail(@Param('id') id: string) {
+  getProductDetail(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
     return this.productService.getProductDetail(id);
   }
   @Get('/category/:categoryId')
   @HttpCode(200)
   getProductByCategory(
-    @Param('categoryId') categoryId: string,
+    @Param('categoryId', new ParseUUIDPipe({ version: '4' }))
+    categoryId: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
