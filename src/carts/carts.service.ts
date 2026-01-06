@@ -25,6 +25,7 @@ export class CartsService {
     productId: string,
     variantId: string,
     quantity: number,
+    type: string | undefined,
   ): Promise<any> {
     const checkCartItem = await this.db.query<{ id: string; cart_id: string }>(
       `SELECT ci.id, ci.cart_id FROM cart_items ci LEFT JOIN carts c ON c.id = ci.cart_id WHERE c.user_id = $1 AND ci.seller_id = $2`,
@@ -92,18 +93,23 @@ export class CartsService {
           };
         }
 
-        if (
-          Number(checkStock.rows[0].stock) <
-          quantity + Number(existingCartProductItem.quantity_item)
-        ) {
+        if (Number(checkStock.rows[0].stock) < quantity) {
           throw new ConflictException('Stock tidak mencukupi');
         }
-
+        const dataUpdate = await this.db.query<{
+          id: string;
+          quantity_prev: number;
+        }>(
+          `SELECT ci.id, ci.quantity AS quantity_prev FROM cart_items ci LEFT JOIN carts c ON c.id = ci.cart_id WHERE c.user_id = $1 AND ci.variant_id = $2`,
+          [userId, variantId],
+        );
         const updateCartItem = await this.db.query<{ cart_id: string }>(
           'UPDATE cart_items SET quantity = $1 WHERE id = $2 RETURNING cart_id',
           [
-            quantity + Number(existingCartProductItem.quantity_item),
-            exitistingCheckCartItem.id,
+            type === 'insert' && type !== undefined
+              ? quantity + Number(dataUpdate.rows[0].quantity_prev)
+              : quantity,
+            dataUpdate.rows[0].id,
           ],
         );
         return {
@@ -163,6 +169,7 @@ export class CartsService {
       additional_price: number;
       stock: number;
       quantity: number;
+      image_url: string;
     }>(
       `
     SELECT 
@@ -178,34 +185,28 @@ export class CartsService {
       pv.variant_name AS variant_name,
       pv.additional_price,
       pv.stock,
-      ci.quantity
+      ci.quantity,
+      p.image_url
     FROM cart_items ci
     JOIN carts c ON c.id = ci.cart_id
     JOIN products p ON p.id = ci.product_id
     JOIN product_variants pv ON pv.id = ci.variant_id
     JOIN sellers s ON s.id = ci.seller_id
     WHERE c.user_id = $1
-    ORDER BY s.store_name ASC
+    ORDER BY s.store_name ASC, p.name ASC
     `,
       [userId],
     );
 
     const sellers: CartsResponse['sellers'] = [];
-    let totalPrice = 0;
 
     for (const item of cartItems.rows) {
-      const finalPrice = item.price ?? item.original_price;
-      const subtotal = finalPrice * item.quantity;
-
-      totalPrice += subtotal;
-
       let seller = sellers.find((s) => s.seller_id === item.seller_id);
 
       if (!seller) {
         seller = {
           seller_id: item.seller_id,
           seller_name: item.seller_name,
-          seller_total: 0,
           items: [],
         };
         sellers.push(seller);
@@ -230,14 +231,11 @@ export class CartsService {
 
         quantity: item.quantity,
         stock: item.stock,
-        subtotal,
+        image_url: item.image_url,
       });
-
-      seller.seller_total += subtotal;
     }
 
     return {
-      total_price: totalPrice,
       sellers,
     };
   }

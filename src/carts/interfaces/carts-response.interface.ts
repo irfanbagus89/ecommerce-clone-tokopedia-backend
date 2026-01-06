@@ -1,9 +1,7 @@
 export interface CartsResponse {
-  total_price: number;
   sellers: {
     seller_id: string;
     seller_name: string;
-    seller_total: number;
     items: {
       cart_id: string;
       cart_item_id: string;
@@ -18,7 +16,7 @@ export interface CartsResponse {
 
       quantity: number;
       stock: number;
-      subtotal: number;
+      image_url: string;
     }[];
   }[];
 }
