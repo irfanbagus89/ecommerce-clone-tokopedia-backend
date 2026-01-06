@@ -254,7 +254,7 @@ export class ProductsService {
         )
       )
     GROUP BY p.id, s.seller_location
-    ORDER BY sold DESC
+    ORDER BY sold DESC, p.id DESC
     LIMIT $2 OFFSET $3
     `,
       [searchValue, limit, offset],
@@ -338,7 +338,7 @@ export class ProductsService {
             AND pv.stock > 0
         )
       GROUP BY p.id, s.seller_location
-      ORDER BY sold DESC
+      ORDER BY sold DESC, p.id DESC
       LIMIT $1 OFFSET $2;
       `,
       [limit, offset],
@@ -411,7 +411,7 @@ export class ProductsService {
             AND pv.stock > 0
         )
       GROUP BY p.id, s.seller_location
-      ORDER BY sold DESC
+      ORDER BY sold DESC, p.id DESC
       LIMIT $1 OFFSET $2;
       `,
       [limit, offset],
@@ -483,7 +483,7 @@ export class ProductsService {
         and p.category_id = $2
         and p.id <> $3
       GROUP BY p.id, s.seller_location
-      ORDER BY sold DESC
+      ORDER BY sold DESC, p.id DESC
       LIMIT $4 OFFSET $5;
       `,
       [sellerId, categoryId, id, limit, offset],
@@ -555,7 +555,7 @@ export class ProductsService {
             AND pv.stock > 0
         )
      GROUP BY p.id, s.seller_location
-     ORDER BY sold DESC
+     ORDER BY sold DESC, p.id DESC
      LIMIT $2 OFFSET $3;
       `,
       [categoryId, limit, offset],
