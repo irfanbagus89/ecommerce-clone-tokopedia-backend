@@ -17,6 +17,7 @@ export interface CartsResponse {
       quantity: number;
       stock: number;
       image_url: string;
+      category_id: string;
     }[];
   }[];
 }

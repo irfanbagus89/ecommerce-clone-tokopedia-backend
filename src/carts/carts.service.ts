@@ -1,9 +1,4 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { Pool } from 'pg';
 import { CartsResponse } from './interfaces/carts-response.interface';
 
@@ -152,7 +147,7 @@ export class CartsService {
     );
 
     if (cart.rowCount === 0) {
-      throw new NotFoundException('Cart kosong');
+      return { sellers: [] };
     }
 
     const cartItems = await this.db.query<{
@@ -170,6 +165,7 @@ export class CartsService {
       stock: number;
       quantity: number;
       image_url: string;
+      category_id: string;
     }>(
       `
     SELECT 
@@ -186,7 +182,8 @@ export class CartsService {
       pv.additional_price,
       pv.stock,
       ci.quantity,
-      p.image_url
+      p.image_url,
+      p.category_id
     FROM cart_items ci
     JOIN carts c ON c.id = ci.cart_id
     JOIN products p ON p.id = ci.product_id
@@ -232,6 +229,7 @@ export class CartsService {
         quantity: item.quantity,
         stock: item.stock,
         image_url: item.image_url,
+        category_id: item.category_id,
       });
     }
 

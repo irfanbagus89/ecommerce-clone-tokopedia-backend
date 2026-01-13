@@ -8,6 +8,7 @@ interface EnvironmentVariables {
   JWT_EXPIRES_IN: string;
   NODE_ENV: string;
   DOMAIN_PROD: string;
+  MIDTRANS_SERVER_KEY: string;
 }
 
 @Injectable()
@@ -37,5 +38,8 @@ export class ConfigService {
   }
   get getDomainProd(): string {
     return this.get('DOMAIN_PROD');
+  }
+  get getMidtransServerKey(): string {
+    return this.get('MIDTRANS_SERVER_KEY');
   }
 }

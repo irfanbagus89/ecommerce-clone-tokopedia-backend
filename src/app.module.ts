@@ -11,10 +11,14 @@ import { IntentParserModule } from './intentparser/intentparser.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { OrdersModule } from './orders/orders.module';
 import { CartsModule } from './carts/carts.module';
+import { MidtransModule } from './midtrans/midtrans.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { WorkerModule } from './worker/worker.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     AuthModule,
     SellerModule,
@@ -24,6 +28,8 @@ import { CartsModule } from './carts/carts.module';
     ReviewsModule,
     OrdersModule,
     CartsModule,
+    MidtransModule,
+    WorkerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -153,7 +153,7 @@ export class ProductsService {
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
     WHERE oi.product_id = $1
-    AND o.status IN ('paid', 'shipped', 'completed')
+    AND o.status IN ('processing', 'shipped', 'delivered', 'completed')
     `,
       [id],
     );
