@@ -51,6 +51,10 @@ export class ProductsController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
     @Query('search') search: string = '',
+    @Query('storeTypes') storeTypes: number[] | null = null,
+    @Query('locations') locations: string[] | null = null,
+    @Query('minPrice') minPrice: number | null = null,
+    @Query('maxPrice') maxPrice: number | null = null,
     @Query('smart') smart: boolean = false,
   ) {
     if (smart === false) {
@@ -58,6 +62,10 @@ export class ProductsController {
         Number(page),
         Number(limit),
         search,
+        storeTypes,
+        locations,
+        minPrice,
+        maxPrice,
       );
     } else {
       return 'tes';

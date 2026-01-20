@@ -97,7 +97,7 @@ export class AuthService {
 
   async profile(userId: string): Promise<Profile> {
     const { rows } = await this.db.query<User>(
-      'SELECT id, email, name FROM "users" WHERE id = $1',
+      'SELECT id, email, name, role FROM users WHERE id = $1',
       [userId],
     );
     const user = rows[0];

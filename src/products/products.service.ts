@@ -216,73 +216,203 @@ export class ProductsService {
     page: number,
     limit: number,
     search: string,
-  ): Promise<ProductsResponse> {
+    storeTypes: number[] | null,
+    locations: string[] | null,
+    minPrice: number | null,
+    maxPrice: number | null,
+  ): Promise<
+    ProductsResponse & {
+      locations: string[];
+      store_type: { id: number; name: string }[];
+    }
+  > {
     const offset = (page - 1) * limit;
     const searchValue = `%${search}%`;
     const productsData = await this.db.query<ProductsItem>(
       `
       SELECT
-      p.id,
-      p.name,
-      p.price,
-      p.original_price,
-      p.image_url,
-      p.category_id,
-      s.seller_location AS location,
-      COALESCE(AVG(r.rating), 0) AS rating,
-      COALESCE(SUM(oi.quantity), 0) AS sold
-    FROM products p
-    JOIN sellers s ON s.id = p.seller_id
-    JOIN store_type st ON st.id = s.store_type_id
-    LEFT JOIN reviews r ON r.product_id = p.id
-    LEFT JOIN order_items oi ON oi.product_id = p.id
-    WHERE
-      EXISTS (
-        SELECT 1
-        FROM product_variants pv
-        WHERE pv.product_id = p.id
-          AND pv.stock > 0
-      )
-      AND (
-        $1 = '' OR
-        p.name ILIKE $1 OR
+        p.id,
+        p.name,
+        p.price,
+        p.original_price,
+        p.image_url,
+        p.category_id,
+        s.seller_location AS location,
+        COALESCE(AVG(r.rating), 0) AS rating,
+        COALESCE(SUM(oi.quantity), 0) AS sold
+      FROM products p
+      JOIN sellers s ON s.id = p.seller_id
+      JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN reviews r ON r.product_id = p.id
+      LEFT JOIN order_items oi ON oi.product_id = p.id
+      WHERE
         EXISTS (
           SELECT 1
-          FROM product_variants pv2
-          WHERE pv2.product_id = p.id
-          AND pv2.variant_name ILIKE $1
+          FROM product_variants pv
+          WHERE pv.product_id = p.id
+            AND pv.stock > 0
         )
-      )
-    GROUP BY p.id, s.seller_location
-    ORDER BY sold DESC, p.id DESC
-    LIMIT $2 OFFSET $3
+        AND (
+          $1 = '' OR
+          p.name ILIKE $1 OR
+          EXISTS (
+            SELECT 1
+            FROM product_variants pv2
+            WHERE pv2.product_id = p.id
+            AND pv2.variant_name ILIKE $1
+          )
+        )
+        AND (
+          $4::int[] IS NULL OR st.id = ANY($4::int[])
+        )
+        AND (
+          $5::text[] IS NULL OR s.seller_location = ANY($5::text[])
+        )
+        AND (
+          $6::numeric IS NULL OR COALESCE(p.price, p.original_price) >= $6::numeric
+        )
+        AND (
+          $7::numeric IS NULL OR COALESCE(p.price, p.original_price) <= $7::numeric
+        )
+        GROUP BY p.id, s.seller_location
+        ORDER BY sold DESC, p.id DESC
+        LIMIT $2 OFFSET $3
     `,
-      [searchValue, limit, offset],
+      [
+        searchValue,
+        limit,
+        offset,
+        storeTypes?.length ? storeTypes : null,
+        locations?.length ? locations : null,
+        minPrice ?? null,
+        maxPrice ?? null,
+      ],
     );
-
+    const sellerLocation = await this.db.query<{ seller_location: string }>(
+      `
+      SELECT DISTINCT s.seller_location
+      FROM products p
+      JOIN sellers s ON s.id = p.seller_id
+      JOIN store_type st ON st.id = s.store_type_id
+      WHERE
+        EXISTS (
+          SELECT 1
+          FROM product_variants pv
+          WHERE pv.product_id = p.id
+            AND pv.stock > 0
+        )
+        AND (
+          $1 = '' OR
+          p.name ILIKE $1 OR
+          EXISTS (
+            SELECT 1
+            FROM product_variants pv2
+            WHERE pv2.product_id = p.id
+            AND pv2.variant_name ILIKE $1
+          )
+        )
+        AND (
+          $2::int[] IS NULL OR st.id = ANY($2::int[])
+        )
+        AND (
+          $3::numeric IS NULL OR COALESCE(p.price, p.original_price) >= $3::numeric
+        )
+        AND (
+          $4::numeric IS NULL OR COALESCE(p.price, p.original_price) <= $4::numeric
+        )
+      ORDER BY s.seller_location ASC
+    `,
+      [
+        searchValue,
+        storeTypes?.length ? storeTypes : null,
+        minPrice ?? null,
+        maxPrice ?? null,
+      ],
+    );
+    const storeType = await this.db.query<{ id: number; name: string }>(
+      `
+      SELECT DISTINCT st.id, st.name
+      FROM products p
+      JOIN sellers s ON s.id = p.seller_id
+      JOIN store_type st ON st.id = s.store_type_id
+      WHERE
+        EXISTS (
+          SELECT 1
+          FROM product_variants pv
+          WHERE pv.product_id = p.id
+            AND pv.stock > 0
+        )
+        AND (
+          $1 = '' OR
+          p.name ILIKE $1 OR
+          EXISTS (
+            SELECT 1
+            FROM product_variants pv2
+            WHERE pv2.product_id = p.id
+            AND pv2.variant_name ILIKE $1
+          )
+        )
+        AND (
+          $2::text[] IS NULL OR s.seller_location = ANY($2::text[])
+        )
+        AND (
+          $3::numeric IS NULL OR COALESCE(p.price, p.original_price) >= $3::numeric
+        )
+        AND (
+          $4::numeric IS NULL OR COALESCE(p.price, p.original_price) <= $4::numeric
+        )
+      ORDER BY st.name ASC
+      `,
+      [
+        searchValue,
+        locations?.length ? locations : null,
+        minPrice ?? null,
+        maxPrice ?? null,
+      ],
+    );
     const totalResult = await this.db.query<{ total: number }>(
       `
-    SELECT COUNT(DISTINCT p.id) AS total
-    FROM products p
-    WHERE
-      EXISTS (
-        SELECT 1
-        FROM product_variants pv
-        WHERE pv.product_id = p.id
-          AND pv.stock > 0
-      )
-      AND (
-        $1 = '' OR
-        p.name ILIKE $1 OR
+      SELECT COUNT(DISTINCT p.id) AS total
+      FROM products p
+      JOIN sellers s ON s.id = p.seller_id
+      JOIN store_type st ON st.id = s.store_type_id
+      WHERE
         EXISTS (
           SELECT 1
-          FROM product_variants pv2
-          WHERE pv2.product_id = p.id
-            AND pv2.variant_name ILIKE $1
+          FROM product_variants pv
+          WHERE pv.product_id = p.id
+            AND pv.stock > 0
         )
-      );
-    `,
-      [searchValue],
+        AND (
+          $1 = '' OR
+          p.name ILIKE $1 OR
+          EXISTS (
+            SELECT 1
+            FROM product_variants pv2
+            WHERE pv2.product_id = p.id
+              AND pv2.variant_name ILIKE $1
+          )
+        )
+        AND (
+          $2::int[] IS NULL OR st.id = ANY($2::int[])
+        )
+        AND (
+          $3::text[] IS NULL OR s.seller_location = ANY($3::text[])
+        )
+        AND (
+          $4::numeric IS NULL OR COALESCE(p.price, p.original_price) >= $4::numeric
+        )
+        AND (
+          $5::numeric IS NULL OR COALESCE(p.price, p.original_price) <= $5::numeric
+        )
+      `,
+      [
+        searchValue,
+        storeTypes?.length ? storeTypes : null,
+        locations?.length ? locations : null,
+        minPrice ?? null,
+        maxPrice ?? null,
+      ],
     );
 
     const total = Number(totalResult.rows[0].total);
@@ -303,6 +433,8 @@ export class ProductsService {
         sold: Number(p.sold),
         location: p.location,
       })),
+      locations: sellerLocation.rows.map((row) => row.seller_location),
+      store_type: storeType.rows,
     };
   }
 
