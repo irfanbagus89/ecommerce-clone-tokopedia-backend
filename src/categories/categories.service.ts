@@ -73,4 +73,19 @@ export class CategoriesService {
 
     return result;
   }
+  async getAllSubCategories(): Promise<CategoriesResponse[]> {
+    const subCategories = await this.db.query<Categories>(
+      'SELECT id, name, parent_id FROM "categories" WHERE parent_id IS NOT NULL',
+    );
+
+    if (subCategories.rows.length === 0) {
+      throw new NotFoundException('Categori tidak ditemukan');
+    }
+
+    return subCategories.rows.map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+      parent_id: cat.parent_id,
+    }));
+  }
 }

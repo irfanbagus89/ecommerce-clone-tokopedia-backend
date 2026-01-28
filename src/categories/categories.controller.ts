@@ -31,10 +31,14 @@ export class CategoriesController {
   getAllCategori() {
     return this.categoriesService.getCategories();
   }
+  @Get('sub-categories')
+  @HttpCode(200)
+  getAllSubCategori() {
+    return this.categoriesService.getAllSubCategories();
+  }
 
   @Get(':id')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard)
   getSubCategoriByCategori(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ) {

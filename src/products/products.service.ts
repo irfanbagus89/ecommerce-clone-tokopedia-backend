@@ -11,7 +11,6 @@ import {
   ProductsItem,
   ProductsResponse,
 } from './interface/products.interface';
-import { ConfigService } from 'src/common/config/config.service';
 
 interface Product {
   id: string;
@@ -20,10 +19,7 @@ interface Product {
 
 @Injectable()
 export class ProductsService {
-  constructor(
-    @Inject('PG_POOL') private db: Pool,
-    private configService: ConfigService,
-  ) {}
+  constructor(@Inject('PG_POOL') private db: Pool) {}
 
   private calcDiscount(price: number, original: number) {
     if (price >= original) return 0;
@@ -35,50 +31,86 @@ export class ProductsService {
 
   async create(
     data: CreateDto,
-    id: string,
-    image?: Express.Multer.File,
+    userId: string,
+    files: {
+      image?: Express.Multer.File[];
+      image2?: Express.Multer.File[];
+      image3?: Express.Multer.File[];
+      image4?: Express.Multer.File[];
+      image5?: Express.Multer.File[];
+    },
   ): Promise<CreateProductResponse> {
     const seller = await this.db.query<ProductsItem>(
       'SELECT id FROM "sellers" WHERE user_id = $1',
-      [id],
+      [userId],
     );
 
-    let imageUrl: string | null = null;
-
-    if (image) {
-      const uploadsDir = join(process.cwd(), 'uploads');
-
-      if (!existsSync(uploadsDir)) {
-        mkdirSync(uploadsDir);
-      }
-
-      const fileName = `${Date.now()}-${image.originalname}`;
-      const filePath = join(uploadsDir, fileName);
-
-      writeFileSync(filePath, image.buffer);
-
-      imageUrl = fileName;
+    const uploadsDir = join(process.cwd(), 'uploads');
+    if (!existsSync(uploadsDir)) {
+      mkdirSync(uploadsDir);
     }
+
+    const saveFile = (file?: Express.Multer.File) => {
+      if (!file) return null;
+      const fileName = `${Date.now()}-${file.originalname}`;
+      const filePath = join(uploadsDir, fileName);
+      writeFileSync(filePath, file.buffer);
+      return fileName;
+    };
+
+    const imageUrl1 = saveFile(files.image?.[0]);
+    const imageUrl2 = saveFile(files.image2?.[0]);
+    const imageUrl3 = saveFile(files.image3?.[0]);
+    const imageUrl4 = saveFile(files.image4?.[0]);
+    const imageUrl5 = saveFile(files.image5?.[0]);
+
+    // hitung total stock dari variants
+    const totalStock =
+      data.variants?.reduce((a, b) => a + Number(b.stock || 0), 0) ?? 0;
+
     const createProduct = await this.db.query<Product>(
       `INSERT INTO "products" 
-        (category_id, seller_id, name, description, original_price, stock, image_url) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7) 
-       RETURNING id, name`,
+      (category_id, seller_id, name, description, original_price,
+       image_url, image_url_2, image_url_3, image_url_4, image_url_5) 
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) 
+     RETURNING id, name`,
       [
         data.category_id,
         seller.rows[0].id,
         data.name,
         data.description,
         Number(data.price),
-        Number(data.stock),
-        imageUrl,
+        imageUrl1,
+        imageUrl2,
+        imageUrl3,
+        imageUrl4,
+        imageUrl5,
       ],
     );
-    const result = {
-      id: createProduct.rows[0].id,
+
+    const productId = createProduct.rows[0].id;
+
+    // INSERT VARIANTS
+    if (data.variants?.length) {
+      for (const v of data.variants) {
+        await this.db.query(
+          `INSERT INTO product_variants
+          (product_id, variant_name, additional_price, stock)
+         VALUES ($1,$2,$3,$4)`,
+          [
+            productId,
+            v.name,
+            Number(v.price), // additional_price
+            Number(v.stock),
+          ],
+        );
+      }
+    }
+
+    return {
+      id: productId,
       name: createProduct.rows[0].name,
     };
-    return result;
   }
 
   async getProductDetail(id: string): Promise<ProductDetailResponse> {
