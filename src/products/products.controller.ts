@@ -5,25 +5,10 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
-  Post,
   Query,
-  Req,
-  UploadedFiles,
-  UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { CreateDto } from './dto/create.dto';
-import { JwtAuthGuard } from 'src/auth/jwt.guard';
-import { JwtPayload } from 'src/auth/jwt.strategy';
-import { RolesGuard } from 'src/auth/roles/roles.guard';
-import { Roles } from 'src/auth/roles/roles.decorator';
 import { IntentparserService } from 'src/intentparser/intentparser.service';
-
-interface AuthenticatedRequest extends Request {
-  user: JwtPayload;
-}
 
 @Controller('products')
 export class ProductsController {
@@ -31,34 +16,6 @@ export class ProductsController {
     private readonly productService: ProductsService,
     private readonly intentParser: IntentparserService,
   ) {}
-
-  @Post()
-  @Roles('seller')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'image', maxCount: 1 },
-      { name: 'image2', maxCount: 1 },
-      { name: 'image3', maxCount: 1 },
-      { name: 'image4', maxCount: 1 },
-      { name: 'image5', maxCount: 1 },
-    ]),
-  )
-  @HttpCode(201)
-  create(
-    @Body() dto: CreateDto,
-    @UploadedFiles()
-    files: {
-      image?: Express.Multer.File[];
-      image2?: Express.Multer.File[];
-      image3?: Express.Multer.File[];
-      image4?: Express.Multer.File[];
-      image5?: Express.Multer.File[];
-    },
-    @Req() req: AuthenticatedRequest,
-  ) {
-    return this.productService.create(dto, req.user.userId, files);
-  }
 
   @Get()
   @HttpCode(200)

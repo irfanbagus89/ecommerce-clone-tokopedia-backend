@@ -1,7 +1,3 @@
-export interface CreateProductResponse {
-  id: string;
-  name: string;
-}
 export interface ProductsItem {
   id: string;
   name: string;

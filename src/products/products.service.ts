@@ -2,20 +2,14 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
-import { CreateDto } from './dto/create.dto';
+import { CreateDto } from '../seller/dto/create.dto';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import {
-  CreateProductResponse,
   ProductDetailResponse,
   ProductsItem,
   ProductsResponse,
 } from './interface/products.interface';
-
-interface Product {
-  id: string;
-  name: string;
-}
 
 @Injectable()
 export class ProductsService {
@@ -27,90 +21,6 @@ export class ProductsService {
     const percent = ((original - price) / original) * 100;
 
     return Math.max(1, Math.round(percent));
-  }
-
-  async create(
-    data: CreateDto,
-    userId: string,
-    files: {
-      image?: Express.Multer.File[];
-      image2?: Express.Multer.File[];
-      image3?: Express.Multer.File[];
-      image4?: Express.Multer.File[];
-      image5?: Express.Multer.File[];
-    },
-  ): Promise<CreateProductResponse> {
-    const seller = await this.db.query<ProductsItem>(
-      'SELECT id FROM "sellers" WHERE user_id = $1',
-      [userId],
-    );
-
-    const uploadsDir = join(process.cwd(), 'uploads');
-    if (!existsSync(uploadsDir)) {
-      mkdirSync(uploadsDir);
-    }
-
-    const saveFile = (file?: Express.Multer.File) => {
-      if (!file) return null;
-      const fileName = `${Date.now()}-${file.originalname}`;
-      const filePath = join(uploadsDir, fileName);
-      writeFileSync(filePath, file.buffer);
-      return fileName;
-    };
-
-    const imageUrl1 = saveFile(files.image?.[0]);
-    const imageUrl2 = saveFile(files.image2?.[0]);
-    const imageUrl3 = saveFile(files.image3?.[0]);
-    const imageUrl4 = saveFile(files.image4?.[0]);
-    const imageUrl5 = saveFile(files.image5?.[0]);
-
-    // hitung total stock dari variants
-    const totalStock =
-      data.variants?.reduce((a, b) => a + Number(b.stock || 0), 0) ?? 0;
-
-    const createProduct = await this.db.query<Product>(
-      `INSERT INTO "products" 
-      (category_id, seller_id, name, description, original_price,
-       image_url, image_url_2, image_url_3, image_url_4, image_url_5) 
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) 
-     RETURNING id, name`,
-      [
-        data.category_id,
-        seller.rows[0].id,
-        data.name,
-        data.description,
-        Number(data.price),
-        imageUrl1,
-        imageUrl2,
-        imageUrl3,
-        imageUrl4,
-        imageUrl5,
-      ],
-    );
-
-    const productId = createProduct.rows[0].id;
-
-    // INSERT VARIANTS
-    if (data.variants?.length) {
-      for (const v of data.variants) {
-        await this.db.query(
-          `INSERT INTO product_variants
-          (product_id, variant_name, additional_price, stock)
-         VALUES ($1,$2,$3,$4)`,
-          [
-            productId,
-            v.name,
-            Number(v.price), // additional_price
-            Number(v.stock),
-          ],
-        );
-      }
-    }
-
-    return {
-      id: productId,
-      name: createProduct.rows[0].name,
-    };
   }
 
   async getProductDetail(id: string): Promise<ProductDetailResponse> {

@@ -5,8 +5,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Pool } from 'pg';
-import { SellerResponse } from './interface/seller-response.interface';
+import {
+  CreateProductResponse,
+  SellerResponse,
+} from './interface/seller-response.interface';
 import { RegisterDto } from './dto/register.dto';
+import { CreateDto } from './dto/create.dto';
+import { ProductsItem } from 'src/products/interface/products.interface';
+import { join } from 'path';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 
 interface Seller {
   id: string;
@@ -19,6 +26,195 @@ interface Seller {
 @Injectable()
 export class SellerService {
   constructor(@Inject('PG_POOL') private db: Pool) {}
+
+  async create(
+    data: CreateDto,
+    userId: string,
+    files: {
+      image?: Express.Multer.File[];
+      image2?: Express.Multer.File[];
+      image3?: Express.Multer.File[];
+      image4?: Express.Multer.File[];
+      image5?: Express.Multer.File[];
+    },
+  ): Promise<CreateProductResponse> {
+    const seller = await this.db.query<ProductsItem>(
+      'SELECT id FROM "sellers" WHERE user_id = $1',
+      [userId],
+    );
+
+    const uploadsDir = join(process.cwd(), 'uploads');
+    if (!existsSync(uploadsDir)) {
+      mkdirSync(uploadsDir);
+    }
+
+    const saveFile = (file?: Express.Multer.File) => {
+      if (!file) return null;
+      const fileName = `${Date.now()}-${file.originalname}`;
+      const filePath = join(uploadsDir, fileName);
+      writeFileSync(filePath, file.buffer);
+      return fileName;
+    };
+
+    const imageUrl1 = saveFile(files.image?.[0]);
+    const imageUrl2 = saveFile(files.image2?.[0]);
+    const imageUrl3 = saveFile(files.image3?.[0]);
+    const imageUrl4 = saveFile(files.image4?.[0]);
+    const imageUrl5 = saveFile(files.image5?.[0]);
+
+    const createProduct = await this.db.query<{ id: string; name: string }>(
+      `INSERT INTO "products" 
+      (category_id, seller_id, name, description, original_price,
+       image_url, image_url_2, image_url_3, image_url_4, image_url_5) 
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) 
+     RETURNING id, name`,
+      [
+        data.category_id,
+        seller.rows[0].id,
+        data.name,
+        data.description,
+        Number(data.price),
+        imageUrl1,
+        imageUrl2,
+        imageUrl3,
+        imageUrl4,
+        imageUrl5,
+      ],
+    );
+
+    const productId = createProduct.rows[0].id;
+
+    // INSERT VARIANTS
+    if (data.variants?.length) {
+      for (const v of data.variants) {
+        await this.db.query(
+          `INSERT INTO product_variants
+          (product_id, variant_name, additional_price, stock)
+         VALUES ($1,$2,$3,$4)`,
+          [
+            productId,
+            v.name,
+            Number(v.price), // additional_price
+            Number(v.stock),
+          ],
+        );
+      }
+    }
+
+    return {
+      id: productId,
+      name: createProduct.rows[0].name,
+    };
+  }
+
+  async getMyProductsSeller(
+    userId: string,
+    page: number,
+    limit: number,
+    search?: string,
+    sortBy: 'name' | 'price' | 'active' = 'name',
+    sortOrder: 'asc' | 'desc' = 'asc',
+  ): Promise<{
+    page: number;
+    totalPages: number;
+    products: {
+      id: string;
+      name: string;
+      image_url: string;
+      price: number | null;
+      original_price: number;
+      active: boolean;
+      variant_id: string;
+      variant_name: string;
+      additional_price: number;
+    }[];
+  }> {
+    const offset = (page - 1) * limit;
+
+    const sortMap = {
+      name: 'p.name',
+      price: 'p.price',
+      active: 'p.active',
+    };
+
+    const orderBy = sortMap[sortBy] || 'p.name';
+
+    const productsData = await this.db.query<{
+      id: string;
+      name: string;
+      image_url: string;
+      price: number | null;
+      original_price: number;
+      active: boolean;
+      variant_id: string;
+      variant_name: string;
+      additional_price: number;
+    }>(
+      `
+    SELECT 
+      p.id,
+      p.name,
+      p.original_price, 
+      p.price, 
+      p.image_url, 
+      p.active,
+      pv.id AS variant_id,
+      pv.additional_price, 
+      pv.variant_name  
+    FROM products p 
+    JOIN product_variants pv ON pv.product_id = p.id  
+    JOIN sellers s ON s.id = p.seller_id 
+    JOIN users u ON u.id = s.user_id 
+    WHERE 
+      u.id = $1
+      AND (
+        $2::text IS NULL
+        OR LOWER(p.name) LIKE LOWER($2::text)
+        OR LOWER(pv.variant_name) LIKE LOWER($2::text)
+      )
+    ORDER BY ${orderBy} ${sortOrder}
+    LIMIT $3 OFFSET $4;
+    `,
+      [userId, search ? `%${search}%` : null, limit, offset],
+    );
+
+    const totalResult = await this.db.query<{ total: number }>(
+      `
+    SELECT COUNT(*) AS total
+    FROM products p 
+    JOIN product_variants pv ON pv.product_id = p.id  
+    JOIN sellers s ON s.id = p.seller_id 
+    JOIN users u ON u.id = s.user_id 
+    WHERE 
+      u.id = $1
+      AND (
+        $2::text IS NULL
+        OR LOWER(p.name) LIKE LOWER($2::text)
+        OR LOWER(pv.variant_name) LIKE LOWER($2::text)
+      )
+    `,
+      [userId, search ? `%${search}%` : null],
+    );
+
+    const total = Number(totalResult.rows[0].total);
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      page,
+      totalPages,
+      products: productsData.rows.map((p) => ({
+        id: p.id,
+        name: p.name,
+        image_url: p.image_url,
+        price: p.price ? Number(p.price) : null,
+        original_price: Number(p.original_price),
+        active: p.active,
+        variant_id: p.variant_id,
+        variant_name: p.variant_name,
+        additional_price: Number(p.additional_price),
+      })),
+    };
+  }
 
   async registerSeller(data: RegisterDto, id: string): Promise<SellerResponse> {
     const user = await this.db.query<Seller>(
