@@ -19,6 +19,7 @@ export interface ProductsItem {
   seller_id?: string;
   store_name?: string;
   verified?: boolean;
+  active?: boolean;
   store_type?: string;
   seller_location?: string;
 }
@@ -54,6 +55,7 @@ export interface ProductDetailResponse {
   sold_count: number;
   stock: number;
   images: string[];
+  active?: boolean;
   variants: { id: string; name: string; price: number; stock: number }[];
 
   seller: {

@@ -37,6 +37,7 @@ export class ProductsService {
       p.image_url_3,
       p.image_url_4,
       p.image_url_5,
+      p.active,
       s.id AS seller_id,
       s.store_name,
       s.verified,
@@ -123,6 +124,7 @@ export class ProductsService {
         count: Number(ratingResult.rows[0]?.count || 0),
       },
       sold_count: Number(soldResult.rows[0]?.sold_count || 0),
+      active: product.active,
       stock: Number(stockResult.rows[0]?.total_stock || 0),
       images: [
         product.image_url,

@@ -125,6 +125,7 @@ export class SellerService {
       original_price: number;
       active: boolean;
       variant_id: string;
+      stock: number;
       variant_name: string;
       additional_price: number;
     }[];
@@ -147,6 +148,7 @@ export class SellerService {
       original_price: number;
       active: boolean;
       variant_id: string;
+      stock: number;
       variant_name: string;
       additional_price: number;
     }>(
@@ -159,6 +161,7 @@ export class SellerService {
       p.image_url, 
       p.active,
       pv.id AS variant_id,
+      pv.stock,
       pv.additional_price, 
       pv.variant_name  
     FROM products p 
@@ -206,14 +209,50 @@ export class SellerService {
         id: p.id,
         name: p.name,
         image_url: p.image_url,
-        price: p.price ? Number(p.price) : null,
-        original_price: Number(p.original_price),
+        price: p.price ? Number(p.price) + Number(p.additional_price) : null,
+        original_price: Number(p.original_price) + Number(p.additional_price),
         active: p.active,
         variant_id: p.variant_id,
+        stock: p.stock,
         variant_name: p.variant_name,
         additional_price: Number(p.additional_price),
       })),
     };
+  }
+
+  async deleteProductVariant(variantId: string, userId: string): Promise<any> {
+    const variant = await this.db.query<{
+      id: string;
+      product_id: string;
+      product_seller_id: string;
+    }>(
+      `
+    SELECT 
+      pv.id, 
+      pv.product_id, 
+      p.seller_id AS product_seller_id
+    FROM product_variants pv
+    JOIN products p ON p.id = pv.product_id
+    JOIN sellers s ON s.id = p.seller_id
+    JOIN users u ON u.id = s.user_id
+    WHERE pv.id = $1 AND u.id = $2
+    `,
+      [variantId, userId],
+    );
+
+    if (variant.rows.length === 0) {
+      throw new NotFoundException('Variant tidak ditemukan atau akses ditolak');
+    }
+
+    await this.db.query('DELETE FROM product_variants WHERE id = $1', [
+      variantId,
+    ]);
+    if (variant.rows.length === 1) {
+      await this.db.query('DELETE FROM products WHERE id = $1', [
+        variant.rows[0].product_id,
+      ]);
+    }
+    return { message: 'Variant berhasil dihapus' };
   }
 
   async registerSeller(data: RegisterDto, id: string): Promise<SellerResponse> {

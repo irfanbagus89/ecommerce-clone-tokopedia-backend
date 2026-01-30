@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -84,6 +85,17 @@ export class SellerController {
       sort,
       order,
     );
+  }
+
+  @Delete('products-variants/:id')
+  @HttpCode(200)
+  @Roles('seller')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  deleteProductVariant(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.sellerService.deleteProductVariant(id, req.user.userId);
   }
 
   @Get(':id')
