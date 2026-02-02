@@ -8,5 +8,6 @@ import { IntentParserModule } from 'src/intentparser/intentparser.module';
   imports: [ConfigModule, IntentParserModule],
   providers: [ProductsService],
   controllers: [ProductsController],
+  exports: [ProductsService],
 })
 export class ProductsModule {}

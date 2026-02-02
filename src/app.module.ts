@@ -14,6 +14,7 @@ import { CartsModule } from './carts/carts.module';
 import { MidtransModule } from './midtrans/midtrans.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { WorkerModule } from './worker/worker.module';
+import { AiagentModule } from './aiagent/aiagent.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { WorkerModule } from './worker/worker.module';
     CartsModule,
     MidtransModule,
     WorkerModule,
+    AiagentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
