@@ -7,14 +7,10 @@ import { AuthModule } from './auth/auth.module';
 import { SellerModule } from './seller/seller.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
-import { IntentParserModule } from './intentparser/intentparser.module';
 import { ReviewsModule } from './reviews/reviews.module';
-import { OrdersModule } from './orders/orders.module';
 import { CartsModule } from './carts/carts.module';
 import { MidtransModule } from './midtrans/midtrans.module';
 import { ScheduleModule } from '@nestjs/schedule';
-import { WorkerModule } from './worker/worker.module';
-import { AiagentModule } from './aiagent/aiagent.module';
 
 @Module({
   imports: [
@@ -25,13 +21,9 @@ import { AiagentModule } from './aiagent/aiagent.module';
     SellerModule,
     CategoriesModule,
     ProductsModule,
-    IntentParserModule,
     ReviewsModule,
-    OrdersModule,
     CartsModule,
     MidtransModule,
-    WorkerModule,
-    AiagentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

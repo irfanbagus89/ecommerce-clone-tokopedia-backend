@@ -8,14 +8,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
-import { IntentparserService } from 'src/intentparser/intentparser.service';
 
 @Controller('products')
 export class ProductsController {
-  constructor(
-    private readonly productService: ProductsService,
-    private readonly intentParser: IntentparserService,
-  ) {}
+  constructor(private readonly productService: ProductsService) {}
 
   @Get()
   @HttpCode(200)
