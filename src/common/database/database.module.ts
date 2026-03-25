@@ -1,33 +1,18 @@
 import { Module, Global } from '@nestjs/common';
-import { Pool } from 'pg';
 import { ConfigService } from '@nestjs/config';
+import { createDatabasePool } from '../../config/database.config';
 
 @Global()
 @Module({
   providers: [
     {
-      provide: 'PG_POOL',
-      useFactory: (config: ConfigService): Pool => {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-          return new Pool({
-            host: config.get<string>('PG_HOST'),
-            port: config.get<number>('PG_PORT'),
-            user: config.get<string>('PG_USER'),
-            password: config.get<string>('PG_PASSWORD'),
-            database: config.get<string>('PG_DB'),
-          });
-        } catch (err: unknown) {
-          if (err instanceof Error) {
-            throw new Error(`Failed to create DB pool: ${err.message}`);
-          }
-          throw new Error('Unknown error while creating DB pool');
-        }
+      provide: 'DATABASE_POOL',
+      useFactory: (configService: ConfigService) => {
+        return createDatabasePool(configService);
       },
-
       inject: [ConfigService],
     },
   ],
-  exports: ['PG_POOL'],
+  exports: ['DATABASE_POOL'],
 })
 export class DatabaseModule {}

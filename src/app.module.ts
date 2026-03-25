@@ -3,14 +3,13 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './common/database/database.module';
-import { AuthModule } from './auth/auth.module';
-import { SellerModule } from './seller/seller.module';
-import { CategoriesModule } from './categories/categories.module';
-import { ProductsModule } from './products/products.module';
-import { ReviewsModule } from './reviews/reviews.module';
-import { CartsModule } from './carts/carts.module';
-import { MidtransModule } from './midtrans/midtrans.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AuthModule } from './modules/auth/auth.module';
+import { SellerModule } from './modules/seller/seller.module';
+import { CategoriesModule } from './modules/categories/categories.module';
+import { ProductsModule } from './modules/products/products.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
+import { CartsModule } from './modules/carts/carts.module';
 
 @Module({
   imports: [
@@ -23,7 +22,6 @@ import { ScheduleModule } from '@nestjs/schedule';
     ProductsModule,
     ReviewsModule,
     CartsModule,
-    MidtransModule,
   ],
   controllers: [AppController],
   providers: [AppService],
