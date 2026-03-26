@@ -5,8 +5,10 @@ import {
   Param,
   ParseUUIDPipe,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
+import { BasicAuthGuard } from 'src/common/guards/basic-auth.guard';
 
 @Controller({ path: 'reviews', version: '1' })
 export class ReviewsController {
@@ -14,6 +16,7 @@ export class ReviewsController {
 
   @Get(':id')
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   getReviewsById(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Query('page') page: number = 1,

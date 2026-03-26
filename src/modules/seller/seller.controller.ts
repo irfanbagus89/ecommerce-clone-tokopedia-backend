@@ -19,10 +19,14 @@ import { CreateDto } from './dto/create.dto';
 import { CurrentUser, Roles } from 'src/common';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { ProductsService } from '../products/products.service';
 
-@Controller('seller')
+@Controller({ path: 'seller', version: '1' })
 export class SellerController {
-  constructor(private sellerService: SellerService) {}
+  constructor(
+    private sellerService: SellerService,
+    private productService: ProductsService,
+  ) {}
 
   @Post()
   @HttpCode(201)
@@ -97,5 +101,14 @@ export class SellerController {
   @UseGuards(JwtAuthGuard)
   getStore(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.sellerService.getStore(id);
+  }
+
+  @Get('products/:id')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  getProductDetail(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.productService.getProductDetail(id);
   }
 }

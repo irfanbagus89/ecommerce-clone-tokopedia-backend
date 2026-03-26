@@ -165,6 +165,7 @@ export class ProductsService {
     ProductsResponse & {
       locations: string[];
       store_type: { id: number; name: string }[];
+      totalResult: number;
     }
   > {
     const offset = (page - 1) * limit;
@@ -362,6 +363,7 @@ export class ProductsService {
     return {
       page: page,
       totalPages: totalPages,
+      totalResult: total,
       products: productsData.rows.map((p) => ({
         id: p.id,
         name: p.name,

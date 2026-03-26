@@ -11,8 +11,9 @@ import {
 import { CategoriesService } from './categories.service';
 import { CreateDto } from './dto/create.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { BasicAuthGuard } from 'src/common/guards/basic-auth.guard';
 
-@Controller('categories')
+@Controller({ path: 'categories', version: '1' })
 export class CategoriesController {
   constructor(private categoriesService: CategoriesService) {}
 
@@ -28,17 +29,20 @@ export class CategoriesController {
 
   @Get()
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   getAllCategori() {
     return this.categoriesService.getCategories();
   }
   @Get('sub-categories')
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   getAllSubCategori() {
     return this.categoriesService.getAllSubCategories();
   }
 
   @Get(':id')
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   getSubCategoriByCategori(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ) {

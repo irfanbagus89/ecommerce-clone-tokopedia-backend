@@ -6,8 +6,10 @@ import {
   Param,
   ParseUUIDPipe,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
+import { BasicAuthGuard } from 'src/common/guards/basic-auth.guard';
 
 @Controller({ path: 'products', version: '1' })
 export class ProductsController {
@@ -15,6 +17,7 @@ export class ProductsController {
 
   @Get()
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   async getProductsSearch(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
@@ -42,6 +45,7 @@ export class ProductsController {
 
   @Get('/official')
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   getProductOfficial(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
@@ -51,6 +55,7 @@ export class ProductsController {
 
   @Get('/foryou')
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   getForYouProducts(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
@@ -60,6 +65,7 @@ export class ProductsController {
 
   @Get('/recommendations-by-store')
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   getRecommendationsProductByStore(
     @Query('sellerId') sellerId: string,
     @Query('categoryId') categoryId: string,
@@ -77,6 +83,7 @@ export class ProductsController {
   }
   @Get('/:id')
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   getProductDetail(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ) {
@@ -84,6 +91,7 @@ export class ProductsController {
   }
   @Get('/category/:categoryId')
   @HttpCode(200)
+  @UseGuards(BasicAuthGuard)
   getProductByCategory(
     @Param('categoryId', new ParseUUIDPipe({ version: '4' }))
     categoryId: string,
