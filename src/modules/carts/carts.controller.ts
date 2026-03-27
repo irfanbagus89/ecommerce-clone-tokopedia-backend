@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { CartsService } from './carts.service';
@@ -26,14 +25,20 @@ export class CartsController {
       dto.productId,
       dto.variantId,
       dto.quantity,
-      dto.type,
     );
   }
 
   @Get()
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
-  getMyCart(@Req() @CurrentUser('sub') user_id: string) {
+  getMyCart(@CurrentUser('sub') user_id: string) {
     return this.cartsService.getMyCart(user_id);
+  }
+
+  @Get('count-mycart')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  getCountMyCart(@CurrentUser('sub') user_id: string) {
+    return this.cartsService.getCountMyCart(user_id);
   }
 }

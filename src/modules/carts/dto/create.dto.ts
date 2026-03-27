@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 
-import { IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsUUID } from 'class-validator';
 
 export class CreateDto {
   @IsUUID()
@@ -17,7 +17,4 @@ export class CreateDto {
 
   @IsNotEmpty()
   quantity: number;
-
-  @IsOptional()
-  type?: string;
 }
