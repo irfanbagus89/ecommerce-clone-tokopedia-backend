@@ -20,6 +20,7 @@ export class CartsService {
     productId: string,
     variantId: string,
     quantity: number,
+    type: string | undefined,
   ): Promise<any> {
     const checkCartItem = await this.db.query<{ id: string; cart_id: string }>(
       `SELECT ci.id, ci.cart_id FROM cart_items ci LEFT JOIN carts c ON c.id = ci.cart_id WHERE c.user_id = $1 AND ci.seller_id = $2`,
@@ -100,7 +101,9 @@ export class CartsService {
         const updateCartItem = await this.db.query<{ cart_id: string }>(
           'UPDATE cart_items SET quantity = $1 WHERE id = $2 RETURNING cart_id',
           [
-            quantity + Number(dataUpdate.rows[0].quantity_prev),
+            type === 'insert' && type !== undefined
+              ? quantity + Number(dataUpdate.rows[0].quantity_prev)
+              : quantity,
             dataUpdate.rows[0].id,
           ],
         );

@@ -25,6 +25,7 @@ export class CartsController {
       dto.productId,
       dto.variantId,
       dto.quantity,
+      dto.type,
     );
   }
 
