@@ -305,4 +305,32 @@ export class SellerService {
     };
     return result;
   }
+  async getProfile(user_id: string): Promise<{
+    id: string;
+    name: string;
+    desc: string;
+    verified: boolean;
+    location: string;
+  }> {
+    const store = await this.db.query<{
+      id: string;
+      store_name: string;
+      store_description: string;
+      verified: boolean;
+      location: string;
+    }>(
+      'SELECT s.id, s.store_name, s.store_description, s.verified, s.location FROM "sellers" s WHERE user_id = $1',
+      [user_id],
+    );
+    const existingStore = store.rows[0];
+    if (!existingStore) throw new NotFoundException('Toko tidak ditemukan');
+
+    return {
+      id: existingStore.id,
+      name: existingStore.store_name,
+      desc: existingStore.store_description,
+      verified: existingStore.verified,
+      location: existingStore.location,
+    };
+  }
 }

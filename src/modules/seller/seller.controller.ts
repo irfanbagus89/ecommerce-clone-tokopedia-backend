@@ -111,4 +111,9 @@ export class SellerController {
   ) {
     return this.productService.getProductDetail(id);
   }
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  getProfile(@CurrentUser('sub') user_id: string) {
+    return this.sellerService.getProfile(user_id);
+  }
 }
