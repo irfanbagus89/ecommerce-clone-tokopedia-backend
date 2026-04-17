@@ -3,6 +3,8 @@ import {
   Controller,
   Get,
   HttpCode,
+  Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -41,5 +43,11 @@ export class CartsController {
   @UseGuards(JwtAuthGuard)
   getCountMyCart(@CurrentUser('sub') user_id: string) {
     return this.cartsService.getCountMyCart(user_id);
+  }
+  @Patch('update-is-checked/:id')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  updateIsChecked(@Param('id') id: string) {
+    return this.cartsService.updateIsCheckedCartItem(id);
   }
 }

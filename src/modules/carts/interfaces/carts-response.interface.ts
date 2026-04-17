@@ -18,6 +18,7 @@ export interface CartsResponse {
       stock: number;
       image_url: string;
       category_id: string;
+      is_checked: boolean;
     }[];
   }[];
 }

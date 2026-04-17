@@ -1,4 +1,9 @@
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Pool } from 'pg';
 import { CartsResponse } from './interfaces/carts-response.interface';
 
@@ -166,6 +171,7 @@ export class CartsService {
       quantity: number;
       image_url: string;
       category_id: string;
+      is_checked: boolean;
     }>(
       `
     SELECT 
@@ -183,14 +189,15 @@ export class CartsService {
       pv.stock,
       ci.quantity,
       p.image_url,
-      p.category_id
+      p.category_id,
+      ci.is_checked
     FROM cart_items ci
     JOIN carts c ON c.id = ci.cart_id
     JOIN products p ON p.id = ci.product_id
     JOIN product_variants pv ON pv.id = ci.variant_id
     JOIN sellers s ON s.id = ci.seller_id
     WHERE c.user_id = $1
-    ORDER BY s.store_name ASC, p.name ASC
+    ORDER BY s.store_name ASC, p.name ASC, pv.variant_name ASC, ci.id ASC
     `,
       [userId],
     );
@@ -230,6 +237,7 @@ export class CartsService {
         stock: item.stock,
         image_url: item.image_url,
         category_id: item.category_id,
+        is_checked: item.is_checked,
       });
     }
 
@@ -244,5 +252,20 @@ export class CartsService {
       [user_id],
     );
     return { count: Number(count.rows[0].total) };
+  }
+
+  async updateIsCheckedCartItem(id: string) {
+    const checkCartItem = await this.db.query<{
+      id: string;
+      is_checked: boolean;
+    }>(`SELECT id, is_checked FROM cart_items WHERE id = $1`, [id]);
+    if (checkCartItem.rowCount === 0) {
+      throw new NotFoundException('Cart item tidak ditemukan');
+    }
+    await this.db.query(`UPDATE cart_items SET is_checked = $1 WHERE id = $2`, [
+      !checkCartItem.rows[0].is_checked,
+      id,
+    ]);
+    return { message: 'Cart item berhasil diperbarui' };
   }
 }
