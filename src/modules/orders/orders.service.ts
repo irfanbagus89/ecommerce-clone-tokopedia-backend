@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { Pool } from 'pg';
 import * as midtransClient from 'midtrans-client';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 
 interface SnapClient {
   createTransaction(
@@ -31,9 +31,9 @@ export class OrdersService {
   private snap: SnapClient;
 
   constructor(@Inject('DATABASE_POOL') private db: Pool) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     this.snap = new (midtransClient as Record<string, any>).Snap({
-      isProduction: false,
+      isProduction: process.env.MIDTRANS_ENV === 'production',
       serverKey:
         process.env.MIDTRANS_SERVER_KEY || 'SB-Mid-server-YOUR_SERVER_KEY',
       clientKey:
@@ -147,14 +147,32 @@ export class OrdersService {
       for (const [sellerId, group] of sellersMap.entries()) {
         const invoiceNumber = `${invoiceBase}/${sellerId.substring(0, 8).toUpperCase()}/${randomSuffix.toUpperCase()}`;
 
+        // Kalkulasi Fee Platform (Contoh: 1% fee)
+        const platformFee = group.subtotal * 0.01;
+        const sellerEarning = group.subtotal - platformFee;
+
         const orderRes = await client.query<{ id: string }>(
           `INSERT INTO orders 
-            (user_id, seller_id, total_price, status, payment_status, invoice_number, created_at, updated_at)
-           VALUES ($1, $2, $3, 'pending', 'unpaid', $4, NOW(), NOW())
+            (user_id, seller_id, total_price, status, payment_status, invoice_number, created_at, updated_at, platform_fee, seller_earning)
+           VALUES ($1, $2, $3, 'pending', 'unpaid', $4, NOW(), NOW(), $5, $6)
            RETURNING id`,
-          [userId, sellerId, group.subtotal, invoiceNumber],
+          [
+            userId,
+            sellerId,
+            group.subtotal,
+            invoiceNumber,
+            platformFee,
+            sellerEarning,
+          ],
         );
         const orderId = orderRes.rows[0].id;
+
+        // Catat Histori Awal
+        await client.query(
+          `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
+           VALUES (gen_random_uuid(), $1, 'pending', 'Order created', NOW())`,
+          [orderId],
+        );
 
         for (const item of group.items) {
           await client.query(
@@ -169,10 +187,15 @@ export class OrdersService {
             ],
           );
 
-          await client.query(
-            `UPDATE product_variants SET stock = stock - $1 WHERE id = $2`,
+          const stockUpdateRes = await client.query(
+            `UPDATE product_variants SET stock = stock - $1 WHERE id = $2 AND stock >= $1`,
             [item.quantity, item.variant_id],
           );
+          if (stockUpdateRes.rowCount === 0) {
+            throw new BadRequestException(
+              `Stock insufficient or race condition detected for product ${item.product_name}`,
+            );
+          }
         }
 
         await client.query(
@@ -226,8 +249,31 @@ export class OrdersService {
       fraud_status?: string;
       payment_type?: string;
       transaction_id?: string;
+      status_code?: string;
+      gross_amount?: string;
+      signature_key?: string;
     };
     if (!data.order_id) return { status: 'ignored', message: 'No order_id' };
+
+    const serverKey =
+      process.env.MIDTRANS_SERVER_KEY || 'SB-Mid-server-YOUR_SERVER_KEY';
+    if (data.status_code && data.gross_amount && data.signature_key) {
+      const hash = createHash('sha512');
+      hash.update(
+        `${data.order_id}${data.status_code}${data.gross_amount}${serverKey}`,
+      );
+      const expectedSignature = hash.digest('hex');
+
+      if (expectedSignature !== data.signature_key) {
+        throw new BadRequestException(
+          'Invalid signature key: Webhook spoofing detected!',
+        );
+      }
+    } else {
+      if (process.env.MIDTRANS_ENV === 'production') {
+        throw new BadRequestException('Missing signature components');
+      }
+    }
 
     const { order_id, transaction_status, fraud_status } = data;
 
@@ -294,10 +340,23 @@ export class OrdersService {
 
         await client.query(
           `UPDATE orders 
-           SET payment_status = $1, status = $2, updated_at = NOW() 
-           WHERE id = ANY($3)`,
+             SET payment_status = $1, status = $2, updated_at = NOW() 
+             WHERE id = ANY($3)`,
           [orderPaymentStatus, orderGeneralStatus, orderIds],
         );
+
+        // Catat histori perubahan status untuk setiap order
+        for (const oid of orderIds) {
+          await client.query(
+            `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
+               VALUES (gen_random_uuid(), $1, $2, $3, NOW())`,
+            [
+              oid,
+              orderGeneralStatus,
+              `Payment status updated to ${orderPaymentStatus}`,
+            ],
+          );
+        }
 
         if (
           finalStatus === 'expire' ||
