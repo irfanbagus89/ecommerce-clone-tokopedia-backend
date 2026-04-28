@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -11,12 +12,18 @@ import {
 } from './interface/seller-response.interface';
 import { RegisterDto } from './dto/register.dto';
 import { CreateDto } from './dto/create.dto';
+import {
+  UpdateProductDto,
+  UpdateSellerProfileDto,
+  UpdateStockDto,
+} from './dto/update.dto';
 import { join } from 'path';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 
 @Injectable()
 export class SellerService {
   constructor(@Inject('DATABASE_POOL') private db: Pool) {}
+
   async create(
     data: CreateDto,
     userId: string,
@@ -74,19 +81,13 @@ export class SellerService {
 
     const productId = createProduct.rows[0].id;
 
-    // INSERT VARIANTS
     if (data.variants?.length) {
       for (const v of data.variants) {
         await this.db.query(
           `INSERT INTO product_variants
           (product_id, variant_name, additional_price, stock)
          VALUES ($1,$2,$3,$4)`,
-          [
-            productId,
-            v.name,
-            Number(v.price), // additional_price
-            Number(v.stock),
-          ],
+          [productId, v.name, Number(v.price), Number(v.stock)],
         );
       }
     }
@@ -210,7 +211,7 @@ export class SellerService {
     };
   }
 
-  async deleteProductVariant(variantId: string, userId: string): Promise<any> {
+  async deleteProductVariant(variantId: string, userId: string) {
     const variant = await this.db.query<{
       id: string;
       product_id: string;
@@ -268,12 +269,12 @@ export class SellerService {
       [id, data.store_name, data.store_description],
     );
 
-    await this.db.query<any>('UPDATE "users" SET role = $1 WHERE id = $2', [
+    await this.db.query('UPDATE "users" SET role = $1 WHERE id = $2', [
       'seller',
       id,
     ]);
 
-    const result = {
+    return {
       store: {
         id: registerStore.rows[0].id,
         name: registerStore.rows[0].store_name,
@@ -281,7 +282,6 @@ export class SellerService {
         verified: registerStore.rows[0].verified,
       },
     };
-    return result;
   }
 
   async getStore(id: string): Promise<SellerResponse> {
@@ -295,7 +295,7 @@ export class SellerService {
     const existingStore = store.rows[0];
     if (!existingStore) throw new NotFoundException('Toko tidak ditemukan');
 
-    const result = {
+    return {
       store: {
         id: store.rows[0].id,
         name: store.rows[0].store_name,
@@ -303,23 +303,24 @@ export class SellerService {
         verified: store.rows[0].verified,
       },
     };
-    return result;
   }
+
   async getProfile(user_id: string): Promise<{
     id: string;
     name: string;
     desc: string;
     verified: boolean;
-    location: string;
+    seller_location: string;
   }> {
     const store = await this.db.query<{
       id: string;
       store_name: string;
       store_description: string;
       verified: boolean;
-      location: string;
+      seller_location: string;
     }>(
-      'SELECT s.id, s.store_name, s.store_description, s.verified, s.location FROM "sellers" s WHERE user_id = $1',
+      `SELECT s.id, s.store_name, s.store_description, s.verified, s.seller_location
+       FROM "sellers" s WHERE user_id = $1`,
       [user_id],
     );
     const existingStore = store.rows[0];
@@ -330,7 +331,210 @@ export class SellerService {
       name: existingStore.store_name,
       desc: existingStore.store_description,
       verified: existingStore.verified,
-      location: existingStore.location,
+      seller_location: existingStore.seller_location,
     };
+  }
+
+  async updateProduct(
+    productId: string,
+    userId: string,
+    dto: UpdateProductDto,
+    files: {
+      image?: Express.Multer.File[];
+      image2?: Express.Multer.File[];
+      image3?: Express.Multer.File[];
+      image4?: Express.Multer.File[];
+      image5?: Express.Multer.File[];
+    },
+  ) {
+    const sellerRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM sellers WHERE user_id = $1`,
+      [userId],
+    );
+    if (!sellerRes.rows[0]) throw new NotFoundException('Seller not found');
+    const sellerId = sellerRes.rows[0].id;
+
+    const productRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM products WHERE id = $1 AND seller_id = $2`,
+      [productId, sellerId],
+    );
+    if (!productRes.rows[0]) throw new NotFoundException('Product not found');
+
+    const uploadsDir = join(process.cwd(), 'uploads');
+    if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+
+    const saveFile = (file?: Express.Multer.File) => {
+      if (!file) return undefined;
+      const fileName = `${Date.now()}-${file.originalname}`;
+      writeFileSync(join(uploadsDir, fileName), file.buffer);
+      return fileName;
+    };
+
+    const setParts: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    if (dto.name !== undefined) {
+      setParts.push(`name = $${idx++}`);
+      params.push(dto.name);
+    }
+    if (dto.description !== undefined) {
+      setParts.push(`description = $${idx++}`);
+      params.push(dto.description);
+    }
+    if (dto.price !== undefined) {
+      setParts.push(`original_price = $${idx++}`);
+      params.push(dto.price);
+    }
+    if (dto.category_id !== undefined) {
+      setParts.push(`category_id = $${idx++}`);
+      params.push(dto.category_id);
+    }
+
+    const img1 = saveFile(files.image?.[0]);
+    const img2 = saveFile(files.image2?.[0]);
+    const img3 = saveFile(files.image3?.[0]);
+    const img4 = saveFile(files.image4?.[0]);
+    const img5 = saveFile(files.image5?.[0]);
+
+    if (img1) {
+      setParts.push(`image_url = $${idx++}`);
+      params.push(img1);
+    }
+    if (img2) {
+      setParts.push(`image_url_2 = $${idx++}`);
+      params.push(img2);
+    }
+    if (img3) {
+      setParts.push(`image_url_3 = $${idx++}`);
+      params.push(img3);
+    }
+    if (img4) {
+      setParts.push(`image_url_4 = $${idx++}`);
+      params.push(img4);
+    }
+    if (img5) {
+      setParts.push(`image_url_5 = $${idx++}`);
+      params.push(img5);
+    }
+
+    if (setParts.length === 0)
+      throw new BadRequestException('No fields to update');
+
+    setParts.push(`updated_at = NOW()`);
+    params.push(productId);
+
+    await this.db.query(
+      `UPDATE products SET ${setParts.join(', ')} WHERE id = $${idx}`,
+      params,
+    );
+
+    return { message: 'Product updated successfully' };
+  }
+
+  async deleteProduct(productId: string, userId: string) {
+    const sellerRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM sellers WHERE user_id = $1`,
+      [userId],
+    );
+    if (!sellerRes.rows[0]) throw new NotFoundException('Seller not found');
+    const sellerId = sellerRes.rows[0].id;
+
+    const productRes = await this.db.query<{ id: string; active: boolean }>(
+      `SELECT id, active FROM products WHERE id = $1 AND seller_id = $2`,
+      [productId, sellerId],
+    );
+    if (!productRes.rows[0]) throw new NotFoundException('Product not found');
+
+    await this.db.query(
+      `UPDATE products SET active = false, updated_at = NOW() WHERE id = $1`,
+      [productId],
+    );
+
+    return { message: 'Product deactivated (soft deleted) successfully' };
+  }
+
+  async updateStock(productId: string, userId: string, dto: UpdateStockDto) {
+    const sellerRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM sellers WHERE user_id = $1`,
+      [userId],
+    );
+    if (!sellerRes.rows[0]) throw new NotFoundException('Seller not found');
+    const sellerId = sellerRes.rows[0].id;
+
+    const productRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM products WHERE id = $1 AND seller_id = $2`,
+      [productId, sellerId],
+    );
+    if (!productRes.rows[0]) throw new NotFoundException('Product not found');
+
+    for (const variant of dto.variants) {
+      const updated = await this.db.query(
+        `UPDATE product_variants SET stock = $1
+         WHERE id = $2 AND product_id = $3`,
+        [variant.stock, variant.variant_id, productId],
+      );
+      if (updated.rowCount === 0) {
+        throw new NotFoundException(
+          `Variant ${variant.variant_id} not found for this product`,
+        );
+      }
+    }
+
+    return { message: 'Stock updated successfully' };
+  }
+
+  async updateSellerProfile(userId: string, dto: UpdateSellerProfileDto) {
+    const sellerRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM sellers WHERE user_id = $1`,
+      [userId],
+    );
+    if (!sellerRes.rows[0]) throw new NotFoundException('Seller not found');
+
+    const setParts: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    if (dto.store_name !== undefined) {
+      setParts.push(`store_name = $${idx++}`);
+      params.push(dto.store_name);
+    }
+    if (dto.store_description !== undefined) {
+      setParts.push(`store_description = $${idx++}`);
+      params.push(dto.store_description);
+    }
+    if (dto.seller_location !== undefined) {
+      setParts.push(`seller_location = $${idx++}`);
+      params.push(dto.seller_location);
+    }
+    if (dto.street !== undefined) {
+      setParts.push(`street = $${idx++}`);
+      params.push(dto.street);
+    }
+    if (dto.kecamatan !== undefined) {
+      setParts.push(`kecamatan = $${idx++}`);
+      params.push(dto.kecamatan);
+    }
+    if (dto.kelurahan !== undefined) {
+      setParts.push(`kelurahan = $${idx++}`);
+      params.push(dto.kelurahan);
+    }
+    if (dto.kode_pos !== undefined) {
+      setParts.push(`kode_pos = $${idx++}`);
+      params.push(dto.kode_pos);
+    }
+
+    if (setParts.length === 0)
+      throw new BadRequestException('No fields to update');
+
+    setParts.push(`updated_at = NOW()`);
+    params.push(sellerRes.rows[0].id);
+
+    await this.db.query(
+      `UPDATE sellers SET ${setParts.join(', ')} WHERE id = $${idx}`,
+      params,
+    );
+
+    return { message: 'Seller profile updated successfully' };
   }
 }

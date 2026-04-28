@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UploadedFiles,
@@ -20,6 +21,11 @@ import { CurrentUser, Roles } from 'src/common';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { ProductsService } from '../products/products.service';
+import {
+  UpdateProductDto,
+  UpdateSellerProfileDto,
+  UpdateStockDto,
+} from './dto/update.dto';
 
 @Controller({ path: 'seller', version: '1' })
 export class SellerController {
@@ -61,6 +67,74 @@ export class SellerController {
     @CurrentUser('sub') user_id: string,
   ) {
     return this.sellerService.create(dto, user_id, files);
+  }
+
+  @Patch('products/:id')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('seller')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'image', maxCount: 1 },
+      { name: 'image2', maxCount: 1 },
+      { name: 'image3', maxCount: 1 },
+      { name: 'image4', maxCount: 1 },
+      { name: 'image5', maxCount: 1 },
+    ]),
+  )
+  updateProduct(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) productId: string,
+    @CurrentUser('sub') userId: string,
+    @Body() dto: UpdateProductDto,
+    @UploadedFiles()
+    files: {
+      image?: Express.Multer.File[];
+      image2?: Express.Multer.File[];
+      image3?: Express.Multer.File[];
+      image4?: Express.Multer.File[];
+      image5?: Express.Multer.File[];
+    },
+  ) {
+    return this.sellerService.updateProduct(
+      productId,
+      userId,
+      dto,
+      files ?? {},
+    );
+  }
+
+  @Delete('products/:id')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('seller')
+  deleteProduct(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) productId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.sellerService.deleteProduct(productId, userId);
+  }
+
+  @Patch('products/:id/stock')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('seller')
+  updateStock(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) productId: string,
+    @CurrentUser('sub') userId: string,
+    @Body() dto: UpdateStockDto,
+  ) {
+    return this.sellerService.updateStock(productId, userId, dto);
+  }
+
+  @Patch('profile')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('seller')
+  updateSellerProfile(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: UpdateSellerProfileDto,
+  ) {
+    return this.sellerService.updateSellerProfile(userId, dto);
   }
 
   @Get('my-products')
@@ -111,6 +185,7 @@ export class SellerController {
   ) {
     return this.productService.getProductDetail(id);
   }
+
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   getProfile(@CurrentUser('sub') user_id: string) {

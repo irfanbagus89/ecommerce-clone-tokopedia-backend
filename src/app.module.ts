@@ -11,6 +11,12 @@ import { ProductsModule } from './modules/products/products.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CartsModule } from './modules/carts/carts.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { VouchersModule } from './modules/vouchers/vouchers.module';
+import { WishlistsModule } from './modules/wishlists/wishlists.module';
+import { AddressesModule } from './modules/addresses/addresses.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -24,6 +30,12 @@ import { OrdersModule } from './modules/orders/orders.module';
     ReviewsModule,
     CartsModule,
     OrdersModule,
+    AdminModule,
+    VouchersModule,
+    WishlistsModule,
+    AddressesModule,
+    NotificationsModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

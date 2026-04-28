@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Pool } from 'pg';
 import * as midtransClient from 'midtrans-client';
 import { randomBytes, createHash } from 'crypto';
@@ -147,7 +153,6 @@ export class OrdersService {
       for (const [sellerId, group] of sellersMap.entries()) {
         const invoiceNumber = `${invoiceBase}/${sellerId.substring(0, 8).toUpperCase()}/${randomSuffix.toUpperCase()}`;
 
-        // Kalkulasi Fee Platform (Contoh: 1% fee)
         const platformFee = group.subtotal * 0.01;
         const sellerEarning = group.subtotal - platformFee;
 
@@ -167,7 +172,6 @@ export class OrdersService {
         );
         const orderId = orderRes.rows[0].id;
 
-        // Catat Histori Awal
         await client.query(
           `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
            VALUES (gen_random_uuid(), $1, 'pending', 'Order created', NOW())`,
@@ -240,6 +244,491 @@ export class OrdersService {
     } finally {
       client.release();
     }
+  }
+
+  async getMyOrders(
+    userId: string,
+    status: string | undefined,
+    page: number,
+    limit: number,
+  ) {
+    const offset = (page - 1) * limit;
+    const params: unknown[] = [userId, limit, offset];
+    let statusClause = '';
+
+    if (status) {
+      params.push(status);
+      statusClause = `AND o.status = $${params.length}`;
+    }
+
+    const sql = `
+      SELECT
+        o.id,
+        o.invoice_number,
+        o.status,
+        o.payment_status,
+        o.total_price,
+        o.created_at,
+        s.store_name,
+        s.id AS seller_id,
+        (
+          SELECT json_agg(json_build_object(
+            'product_name', p.name,
+            'variant_name', pv.variant_name,
+            'quantity', oi.quantity,
+            'price', oi.price,
+            'image_url', p.image_url
+          ))
+          FROM order_items oi
+          JOIN products p ON p.id = oi.product_id
+          LEFT JOIN product_variants pv ON pv.id = oi.variant_id
+          WHERE oi.order_id = o.id
+        ) AS items
+      FROM orders o
+      JOIN sellers s ON s.id = o.seller_id
+      WHERE o.user_id = $1 ${statusClause}
+      ORDER BY o.created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    const countSql = `
+      SELECT COUNT(*) AS total FROM orders o
+      WHERE o.user_id = $1 ${status ? 'AND o.status = $2' : ''}
+    `;
+    const countParams = status ? [userId, status] : [userId];
+
+    const [ordersRes, countRes] = await Promise.all([
+      this.db.query<{
+        id: string;
+        invoice_number: string;
+        status: string;
+        payment_status: string;
+        total_price: string;
+        created_at: Date;
+        store_name: string;
+        seller_id: string;
+        items: unknown;
+      }>(sql, params),
+      this.db.query<{ total: string }>(countSql, countParams),
+    ]);
+
+    const total = parseInt(countRes.rows[0].total, 10);
+
+    return {
+      data: ordersRes.rows,
+      meta: {
+        total,
+        page,
+        limit,
+        total_pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getOrderDetail(orderId: string, userId: string) {
+    const orderRes = await this.db.query<{
+      id: string;
+      invoice_number: string;
+      status: string;
+      payment_status: string;
+      total_price: string;
+      shipping_cost: string;
+      discount_amount: string;
+      seller_earning: string;
+      platform_fee: string;
+      created_at: Date;
+      updated_at: Date;
+    }>(
+      `SELECT id, invoice_number, status, payment_status, total_price,
+              shipping_cost, discount_amount, seller_earning, platform_fee,
+              created_at, updated_at
+       FROM orders WHERE id = $1 AND user_id = $2`,
+      [orderId, userId],
+    );
+    const order = orderRes.rows[0];
+    if (!order) throw new NotFoundException('Order not found');
+
+    const [itemsRes, paymentRes, shippingRes, sellerRes] = await Promise.all([
+      this.db.query<{
+        id: string;
+        product_id: string;
+        product_name: string;
+        image_url: string;
+        variant_id: string;
+        variant_name: string;
+        quantity: number;
+        price: string;
+      }>(
+        `SELECT oi.id, oi.product_id, p.name AS product_name, p.image_url,
+                oi.variant_id, pv.variant_name, oi.quantity, oi.price
+         FROM order_items oi
+         JOIN products p ON p.id = oi.product_id
+         LEFT JOIN product_variants pv ON pv.id = oi.variant_id
+         WHERE oi.order_id = $1`,
+        [orderId],
+      ),
+      this.db.query<{
+        payment_status: string;
+        payment_type: string;
+        snap_token: string;
+        redirect_url: string;
+        gross_amount: string;
+        paid_at: Date;
+      }>(
+        `SELECT payment_status, payment_type, snap_token, redirect_url,
+                gross_amount, paid_at
+         FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [orderId],
+      ),
+      this.db.query<{
+        address: string;
+        city: string;
+        postal_code: string;
+        shipping_method: string;
+        tracking_number: string;
+        status: string;
+        estimated_delivery: string;
+      }>(
+        `SELECT address, city, postal_code, shipping_method, tracking_number,
+                status, estimated_delivery
+         FROM shipping WHERE order_id = $1`,
+        [orderId],
+      ),
+      this.db.query<{ store_name: string; id: string }>(
+        `SELECT s.store_name, s.id
+         FROM orders o JOIN sellers s ON s.id = o.seller_id
+         WHERE o.id = $1`,
+        [orderId],
+      ),
+    ]);
+
+    return {
+      ...order,
+      seller: sellerRes.rows[0] ?? null,
+      items: itemsRes.rows,
+      payment: paymentRes.rows[0] ?? null,
+      shipping: shippingRes.rows[0] ?? null,
+    };
+  }
+
+  async confirmOrderReceived(orderId: string, userId: string) {
+    const orderRes = await this.db.query<{ status: string }>(
+      `SELECT status FROM orders WHERE id = $1 AND user_id = $2`,
+      [orderId, userId],
+    );
+    const order = orderRes.rows[0];
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'shipped') {
+      throw new BadRequestException(
+        'Order can only be confirmed when status is "shipped"',
+      );
+    }
+
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1`,
+        [orderId],
+      );
+      await client.query(
+        `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
+         VALUES (gen_random_uuid(), $1, 'delivered', 'Buyer confirmed receipt', NOW())`,
+        [orderId],
+      );
+      await client.query('COMMIT');
+      return { message: 'Order confirmed as delivered' };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async cancelOrder(orderId: string, userId: string) {
+    const orderRes = await this.db.query<{ status: string }>(
+      `SELECT status FROM orders WHERE id = $1 AND user_id = $2`,
+      [orderId, userId],
+    );
+    const order = orderRes.rows[0];
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'pending') {
+      throw new BadRequestException(
+        'Order can only be cancelled when status is "pending"',
+      );
+    }
+
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Restore stock
+      const itemsRes = await client.query<{
+        variant_id: string;
+        quantity: number;
+      }>(`SELECT variant_id, quantity FROM order_items WHERE order_id = $1`, [
+        orderId,
+      ]);
+      for (const item of itemsRes.rows) {
+        await client.query(
+          `UPDATE product_variants SET stock = stock + $1 WHERE id = $2`,
+          [item.quantity, item.variant_id],
+        );
+      }
+
+      await client.query(
+        `UPDATE orders
+         SET status = 'cancelled', payment_status = 'cancelled', updated_at = NOW()
+         WHERE id = $1`,
+        [orderId],
+      );
+      await client.query(
+        `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
+         VALUES (gen_random_uuid(), $1, 'cancelled', 'Cancelled by buyer', NOW())`,
+        [orderId],
+      );
+      await client.query('COMMIT');
+      return { message: 'Order cancelled successfully' };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getSellerOrders(
+    userId: string,
+    status: string | undefined,
+    page: number,
+    limit: number,
+  ) {
+    const sellerRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM sellers WHERE user_id = $1`,
+      [userId],
+    );
+    if (!sellerRes.rows[0]) throw new NotFoundException('Seller not found');
+    const sellerId = sellerRes.rows[0].id;
+
+    const offset = (page - 1) * limit;
+    const params: unknown[] = [sellerId, limit, offset];
+    let statusClause = '';
+
+    if (status) {
+      params.push(status);
+      statusClause = `AND o.status = $${params.length}`;
+    }
+
+    const sql = `
+      SELECT
+        o.id,
+        o.invoice_number,
+        o.status,
+        o.payment_status,
+        o.total_price,
+        o.created_at,
+        u.name AS buyer_name,
+        u.email AS buyer_email,
+        (
+          SELECT json_agg(json_build_object(
+            'product_name', p.name,
+            'variant_name', pv.variant_name,
+            'quantity', oi.quantity,
+            'price', oi.price,
+            'image_url', p.image_url
+          ))
+          FROM order_items oi
+          JOIN products p ON p.id = oi.product_id
+          LEFT JOIN product_variants pv ON pv.id = oi.variant_id
+          WHERE oi.order_id = o.id
+        ) AS items
+      FROM orders o
+      JOIN users u ON u.id = o.user_id
+      WHERE o.seller_id = $1 ${statusClause}
+      ORDER BY o.created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    const countSql = `
+      SELECT COUNT(*) AS total FROM orders o
+      WHERE o.seller_id = $1 ${status ? 'AND o.status = $2' : ''}
+    `;
+    const countParams = status ? [sellerId, status] : [sellerId];
+
+    const [ordersRes, countRes] = await Promise.all([
+      this.db.query<{
+        id: string;
+        invoice_number: string;
+        status: string;
+        payment_status: string;
+        total_price: string;
+        created_at: Date;
+        buyer_name: string;
+        buyer_email: string;
+        items: unknown;
+      }>(sql, params),
+      this.db.query<{ total: string }>(countSql, countParams),
+    ]);
+
+    const total = parseInt(countRes.rows[0].total, 10);
+
+    return {
+      data: ordersRes.rows,
+      meta: {
+        total,
+        page,
+        limit,
+        total_pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async acceptOrder(orderId: string, userId: string) {
+    const sellerRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM sellers WHERE user_id = $1`,
+      [userId],
+    );
+    if (!sellerRes.rows[0]) throw new NotFoundException('Seller not found');
+    const sellerId = sellerRes.rows[0].id;
+
+    const orderRes = await this.db.query<{
+      status: string;
+      payment_status: string;
+    }>(
+      `SELECT status, payment_status FROM orders WHERE id = $1 AND seller_id = $2`,
+      [orderId, sellerId],
+    );
+    const order = orderRes.rows[0];
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.payment_status !== 'paid') {
+      throw new BadRequestException('Order has not been paid yet');
+    }
+    if (order.status !== 'pending' && order.status !== 'processing') {
+      throw new BadRequestException(
+        'Order cannot be accepted in its current status',
+      );
+    }
+
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE orders SET status = 'processing', updated_at = NOW() WHERE id = $1`,
+        [orderId],
+      );
+      await client.query(
+        `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
+         VALUES (gen_random_uuid(), $1, 'processing', 'Order accepted by seller', NOW())`,
+        [orderId],
+      );
+      await client.query('COMMIT');
+      return { message: 'Order accepted and is now processing' };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async shipOrder(
+    orderId: string,
+    userId: string,
+    trackingNumber: string,
+    shippingMethod?: string,
+  ) {
+    const sellerRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM sellers WHERE user_id = $1`,
+      [userId],
+    );
+    if (!sellerRes.rows[0]) throw new NotFoundException('Seller not found');
+    const sellerId = sellerRes.rows[0].id;
+
+    const orderRes = await this.db.query<{ status: string }>(
+      `SELECT status FROM orders WHERE id = $1 AND seller_id = $2`,
+      [orderId, sellerId],
+    );
+    const order = orderRes.rows[0];
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'processing') {
+      throw new BadRequestException(
+        'Order must be in "processing" status to be shipped',
+      );
+    }
+
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE orders SET status = 'shipped', updated_at = NOW() WHERE id = $1`,
+        [orderId],
+      );
+      await client.query(
+        `UPDATE shipping
+         SET tracking_number = $1,
+             shipping_method = COALESCE($2, shipping_method),
+             status = 'shipped',
+             updated_at = NOW()
+         WHERE order_id = $3`,
+        [trackingNumber, shippingMethod ?? null, orderId],
+      );
+      await client.query(
+        `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
+         VALUES (gen_random_uuid(), $1, 'shipped', $2, NOW())`,
+        [orderId, `Shipped with tracking number: ${trackingNumber}`],
+      );
+      await client.query('COMMIT');
+      return {
+        message: 'Order marked as shipped',
+        tracking_number: trackingNumber,
+      };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getOrderHistory(orderId: string, userId: string) {
+    // Allow both buyer and seller to view — verify ownership first
+    const orderRes = await this.db.query<{
+      user_id: string;
+      seller_id: string;
+    }>(
+      `SELECT o.user_id, s.user_id AS seller_user_id
+       FROM orders o
+       JOIN sellers s ON s.id = o.seller_id
+       WHERE o.id = $1`,
+      [orderId],
+    );
+    const order = orderRes.rows[0];
+    if (!order) throw new NotFoundException('Order not found');
+
+    // Accept row if columns match either buyer or seller
+    const raw = orderRes.rows[0] as unknown as {
+      user_id: string;
+      seller_user_id: string;
+    };
+    if (raw.user_id !== userId && raw.seller_user_id !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const historyRes = await this.db.query<{
+      id: string;
+      status: string;
+      note: string;
+      created_at: Date;
+    }>(
+      `SELECT id, status, note, created_at
+       FROM order_status_histories
+       WHERE order_id = $1
+       ORDER BY created_at ASC`,
+      [orderId],
+    );
+
+    return { order_id: orderId, history: historyRes.rows };
   }
 
   async handleMidtransWebhook(payload: Record<string, unknown>) {
@@ -345,7 +834,6 @@ export class OrdersService {
           [orderPaymentStatus, orderGeneralStatus, orderIds],
         );
 
-        // Catat histori perubahan status untuk setiap order
         for (const oid of orderIds) {
           await client.query(
             `INSERT INTO order_status_histories (id, order_id, status, note, created_at)

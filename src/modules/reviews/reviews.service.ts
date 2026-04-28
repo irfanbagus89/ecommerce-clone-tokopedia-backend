@@ -1,6 +1,15 @@
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Pool } from 'pg';
 import { ReviewsResponse } from './interface/reviews.interface';
+import { join } from 'path';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 
 @Injectable()
 export class ReviewsService {
@@ -166,5 +175,146 @@ export class ReviewsService {
         totalPages: Math.ceil(totalResult.rows[0].total / limit),
       },
     };
+  }
+
+  async createReview(
+    userId: string,
+    orderId: string,
+    productId: string,
+    rating: number,
+    variantId?: string,
+    comment?: string,
+  ) {
+    // Validasi: order harus 'completed' dan milik user ini
+    const orderRes = await this.db.query<{ status: string; seller_id: string }>(
+      `SELECT status FROM orders WHERE id = $1 AND user_id = $2`,
+      [orderId, userId],
+    );
+    const order = orderRes.rows[0];
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== 'completed') {
+      throw new BadRequestException(
+        'Reviews can only be submitted for completed orders',
+      );
+    }
+
+    // Validasi: produk harus ada di order
+    const itemRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM order_items WHERE order_id = $1 AND product_id = $2`,
+      [orderId, productId],
+    );
+    if (!itemRes.rows[0]) {
+      throw new BadRequestException('Product not found in this order');
+    }
+
+    // Validasi: belum pernah review produk ini dari order yang sama
+    const existingRes = await this.db.query<{ id: string }>(
+      `SELECT r.id FROM reviews r
+       JOIN order_items oi ON oi.product_id = r.product_id
+       WHERE r.user_id = $1 AND r.product_id = $2 AND oi.order_id = $3`,
+      [userId, productId, orderId],
+    );
+    if (existingRes.rows[0]) {
+      throw new ConflictException(
+        'You have already reviewed this product for this order',
+      );
+    }
+
+    const result = await this.db.query<{ id: string }>(
+      `INSERT INTO reviews (user_id, product_id, variant_id, rating, comment, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       RETURNING id`,
+      [userId, productId, variantId ?? null, rating, comment ?? null],
+    );
+
+    return {
+      message: 'Review submitted successfully',
+      review_id: result.rows[0].id,
+    };
+  }
+
+  async uploadReviewImages(
+    reviewId: string,
+    userId: string,
+    files: Express.Multer.File[],
+  ) {
+    // Verifikasi review milik user
+    const reviewRes = await this.db.query<{ id: string; user_id: string }>(
+      `SELECT id, user_id FROM reviews WHERE id = $1`,
+      [reviewId],
+    );
+    const review = reviewRes.rows[0];
+    if (!review) throw new NotFoundException('Review not found');
+    if (review.user_id !== userId)
+      throw new ForbiddenException('Access denied');
+
+    // Cek total gambar (maks 5)
+    const countRes = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM review_images WHERE review_id = $1`,
+      [reviewId],
+    );
+    const currentCount = parseInt(countRes.rows[0].count, 10);
+    if (currentCount + files.length > 5) {
+      throw new BadRequestException(
+        `Maximum 5 images per review. Currently has ${currentCount}.`,
+      );
+    }
+
+    const uploadsDir = join(process.cwd(), 'uploads');
+    if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+
+    const savedUrls: string[] = [];
+    for (const file of files) {
+      const fileName = `review-${Date.now()}-${file.originalname}`;
+      writeFileSync(join(uploadsDir, fileName), file.buffer);
+      await this.db.query(
+        `INSERT INTO review_images (review_id, image_url, created_at)
+         VALUES ($1, $2, NOW())`,
+        [reviewId, fileName],
+      );
+      savedUrls.push(fileName);
+    }
+
+    return { message: 'Images uploaded successfully', images: savedUrls };
+  }
+
+  async markHelpful(reviewId: string, userId: string) {
+    const reviewRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM reviews WHERE id = $1`,
+      [reviewId],
+    );
+    if (!reviewRes.rows[0]) throw new NotFoundException('Review not found');
+
+    // Cek duplikasi
+    const voteRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM review_helpful_votes WHERE review_id = $1 AND user_id = $2`,
+      [reviewId, userId],
+    );
+    if (voteRes.rows[0]) {
+      throw new ConflictException(
+        'You have already marked this review as helpful',
+      );
+    }
+
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO review_helpful_votes (review_id, user_id, created_at)
+         VALUES ($1, $2, NOW())`,
+        [reviewId, userId],
+      );
+      await client.query(
+        `UPDATE reviews SET helpful_count = helpful_count + 1 WHERE id = $1`,
+        [reviewId],
+      );
+      await client.query('COMMIT');
+      return { message: 'Review marked as helpful' };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   }
 }
