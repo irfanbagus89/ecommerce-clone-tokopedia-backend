@@ -20,7 +20,8 @@ describe('AuthService', () => {
   let service: AuthService;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    mockDb.query.mockReset();
+    mockJwt.sign.mockClear();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -96,7 +97,7 @@ describe('AuthService', () => {
     it('should throw NotFoundException if user not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
       await expect(service.profile('nonexistent')).rejects.toThrow(
-        NotFoundException,
+        UnauthorizedException,
       );
     });
   });

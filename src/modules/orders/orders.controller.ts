@@ -23,10 +23,14 @@ export class OrdersController {
 
   @Post('checkout')
   @UseGuards(JwtAuthGuard)
-  checkout(@CurrentUser('sub') userId: string, @Body() dto: CheckoutDto) {
+  checkout(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: CheckoutDto,
+  ): Promise<unknown> {
     return this.ordersService.checkout(
       userId,
       dto.cart_item_ids,
+      dto.payment_method_code,
       dto.address,
       dto.city,
       dto.postal_code,

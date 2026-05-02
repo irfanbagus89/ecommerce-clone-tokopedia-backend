@@ -5,3 +5,4 @@ export * from './middlewares';
 export * from './pipes';
 export * from './utils';
 export * from './decorators';
+export * from './cloudinary';

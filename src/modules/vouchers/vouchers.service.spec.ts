@@ -25,7 +25,7 @@ describe('VouchersService', () => {
   let service: VouchersService;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    mockDb.query.mockReset();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VouchersService,

@@ -4,16 +4,12 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 import { Pool } from 'pg';
-import * as midtransClient from 'midtrans-client';
 import { randomBytes, createHash } from 'crypto';
-
-interface SnapClient {
-  createTransaction(
-    parameter: Record<string, unknown>,
-  ): Promise<{ token: string; redirect_url: string }>;
-}
 
 interface SellerGroup {
   items: {
@@ -32,24 +28,44 @@ interface SellerGroup {
   subtotal: number;
 }
 
+interface PaymentMethodRow {
+  id: string;
+  name: string;
+  code: string;
+  type: string;
+}
+
+interface MidtransChargeResponse {
+  transaction_id?: string;
+  transaction_status?: string;
+  payment_type?: string;
+  fraud_status?: string;
+  va_numbers?: { bank: string; va_number: string }[];
+  permata_va_number?: string;
+  bill_key?: string;
+  biller_code?: string;
+  actions?: {
+    name: string;
+    method: string;
+    url?: string;
+    fields?: unknown[];
+  }[];
+  qr_string?: string;
+  expiry_time?: string;
+  [key: string]: unknown;
+}
+
 @Injectable()
 export class OrdersService {
-  private snap: SnapClient;
-
-  constructor(@Inject('DATABASE_POOL') private db: Pool) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    this.snap = new (midtransClient as Record<string, any>).Snap({
-      isProduction: process.env.MIDTRANS_ENV === 'production',
-      serverKey:
-        process.env.MIDTRANS_SERVER_KEY || 'SB-Mid-server-YOUR_SERVER_KEY',
-      clientKey:
-        process.env.MIDTRANS_CLIENT_KEY || 'SB-Mid-client-YOUR_CLIENT_KEY',
-    }) as SnapClient;
-  }
+  constructor(
+    @Inject('DATABASE_POOL') private db: Pool,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
 
   async checkout(
     userId: string,
     cartItemIds: string[],
+    paymentMethodCode?: string,
     address?: string,
     city?: string,
     postalCode?: string,
@@ -131,22 +147,15 @@ export class OrdersService {
       const timestamp = new Date().getTime();
       const randomSuffix = randomBytes(4).toString('hex');
       const midtransOrderId = `TRX-${timestamp}-${randomSuffix}`;
+      const paymentMethod = await this.getPaymentMethod(paymentMethodCode);
 
-      const snapParams = {
-        transaction_details: {
-          order_id: midtransOrderId,
-          gross_amount: totalGrossAmount,
-        },
-        customer_details: {
-          first_name: user.name,
-          email: user.email,
-          phone: user.phone || '08000000000',
-        },
-      };
-
-      const transaction = await this.snap.createTransaction(snapParams);
-      const snapToken = transaction.token;
-      const redirectUrl = transaction.redirect_url;
+      const transaction = await this.chargeCoreApi({
+        orderId: midtransOrderId,
+        grossAmount: totalGrossAmount,
+        user,
+        paymentMethod,
+      });
+      const paymentInstructions = this.extractPaymentInstructions(transaction);
 
       const invoiceBase = `INV/${new Date().toISOString().slice(0, 10).replace(/-/g, '')}/TRX`;
 
@@ -204,9 +213,32 @@ export class OrdersService {
 
         await client.query(
           `INSERT INTO payments 
-            (id, order_id, midtrans_order_id, snap_token, redirect_url, payment_status, gross_amount, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, 'pending', $5, NOW(), NOW())`,
-          [orderId, midtransOrderId, snapToken, redirectUrl, group.subtotal],
+            (id, order_id, payment_method_id, midtrans_order_id, transaction_id,
+             payment_status, payment_type, payment_code, va_number, bill_key,
+             biller_code, qr_string, deeplink_url, payment_actions, fraud_status,
+             gross_amount, raw_response, expired_at, created_at, updated_at)
+           VALUES
+            (gen_random_uuid(), $1, $2, $3, $4,
+             'pending', $5, $6, $7, $8,
+             $9, $10, $11, $12::jsonb, $13,
+             $14, $15::jsonb, NOW() + INTERVAL '24 hours', NOW(), NOW())`,
+          [
+            orderId,
+            paymentMethod.id,
+            midtransOrderId,
+            transaction.transaction_id ?? null,
+            transaction.payment_type ?? paymentInstructions.payment_type,
+            paymentMethod.code,
+            paymentInstructions.va_number,
+            paymentInstructions.bill_key,
+            paymentInstructions.biller_code,
+            paymentInstructions.qr_string,
+            paymentInstructions.deeplink_url,
+            JSON.stringify(paymentInstructions.actions ?? null),
+            transaction.fraud_status ?? null,
+            group.subtotal,
+            JSON.stringify(transaction),
+          ],
         );
 
         await client.query(
@@ -232,9 +264,13 @@ export class OrdersService {
       return {
         message: 'Checkout successful',
         data: {
-          token: snapToken,
-          redirect_url: redirectUrl,
           midtrans_order_id: midtransOrderId,
+          payment_method: paymentMethod,
+          transaction_id: transaction.transaction_id ?? null,
+          payment_type:
+            transaction.payment_type ?? paymentInstructions.payment_type,
+          instructions: paymentInstructions,
+          expired_at: paymentInstructions.expired_at,
         },
       };
     } catch (e: unknown) {
@@ -244,6 +280,187 @@ export class OrdersService {
     } finally {
       client.release();
     }
+  }
+
+  private async getPaymentMethod(
+    paymentMethodCode?: string,
+  ): Promise<PaymentMethodRow> {
+    const result = paymentMethodCode
+      ? await this.db.query<PaymentMethodRow>(
+          `SELECT id, name, code, type
+           FROM payment_methods
+           WHERE code = $1 AND is_active = true`,
+          [paymentMethodCode],
+        )
+      : await this.db.query<PaymentMethodRow>(
+          `SELECT id, name, code, type
+           FROM payment_methods
+           WHERE is_active = true
+           ORDER BY type, name
+           LIMIT 1`,
+        );
+
+    const method = result.rows[0];
+    if (!method) {
+      throw new BadRequestException('Payment method is not available');
+    }
+
+    return method;
+  }
+
+  private async chargeCoreApi(params: {
+    orderId: string;
+    grossAmount: number;
+    user: { name: string; email: string; phone: string | null };
+    paymentMethod: PaymentMethodRow;
+  }) {
+    const serverKey =
+      this.config?.get<string>('MIDTRANS_SERVER_KEY') ||
+      'SB-Mid-server-YOUR_SERVER_KEY';
+    const baseUrl =
+      this.config?.get<string>('MIDTRANS_ENV') === 'production'
+        ? 'https://api.midtrans.com/v2/charge'
+        : 'https://api.sandbox.midtrans.com/v2/charge';
+
+    const payload = this.buildCoreChargePayload(params);
+    const auth = Buffer.from(`${serverKey}:`).toString('base64');
+    const response = await axios.post<MidtransChargeResponse>(
+      baseUrl,
+      payload,
+      {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      },
+    );
+
+    return response.data;
+  }
+
+  private buildCoreChargePayload(params: {
+    orderId: string;
+    grossAmount: number;
+    user: { name: string; email: string; phone: string | null };
+    paymentMethod: PaymentMethodRow;
+  }): Record<string, unknown> {
+    const { orderId, grossAmount, user, paymentMethod } = params;
+    const basePayload: Record<string, unknown> = {
+      transaction_details: {
+        order_id: orderId,
+        gross_amount: Math.round(grossAmount),
+      },
+      customer_details: {
+        first_name: user.name,
+        email: user.email,
+        phone: user.phone || '08000000000',
+      },
+    };
+
+    const frontendUrl =
+      this.config?.get<string>('FRONTEND_URL') || 'http://localhost:3001';
+
+    if (paymentMethod.code.endsWith('_va')) {
+      const bank = paymentMethod.code.replace('_va', '');
+      if (!['bca', 'bni', 'bri', 'permata', 'cimb'].includes(bank)) {
+        throw new BadRequestException(
+          `Payment method ${paymentMethod.code} is not supported by Core API`,
+        );
+      }
+      return {
+        ...basePayload,
+        payment_type: 'bank_transfer',
+        bank_transfer: { bank },
+      };
+    }
+
+    if (paymentMethod.code === 'echannel') {
+      return {
+        ...basePayload,
+        payment_type: 'echannel',
+        echannel: {
+          bill_info1: 'Payment For:',
+          bill_info2: 'Ecommerce Order',
+        },
+      };
+    }
+
+    if (paymentMethod.code === 'gopay') {
+      return {
+        ...basePayload,
+        payment_type: 'gopay',
+        gopay: {
+          enable_callback: true,
+          callback_url: `${frontendUrl}/payments/finish`,
+        },
+      };
+    }
+
+    if (paymentMethod.code === 'qris') {
+      return {
+        ...basePayload,
+        payment_type: 'qris',
+      };
+    }
+
+    if (paymentMethod.code === 'shopeepay') {
+      return {
+        ...basePayload,
+        payment_type: 'shopeepay',
+        shopeepay: {
+          callback_url: `${frontendUrl}/payments/finish`,
+        },
+      };
+    }
+
+    if (
+      paymentMethod.code === 'alfamart' ||
+      paymentMethod.code === 'indomaret'
+    ) {
+      return {
+        ...basePayload,
+        payment_type: 'cstore',
+        cstore: {
+          store: paymentMethod.code,
+          message: 'Ecommerce payment',
+        },
+      };
+    }
+
+    throw new BadRequestException(
+      `Payment method ${paymentMethod.code} is not supported by custom Core API checkout yet`,
+    );
+  }
+
+  private extractPaymentInstructions(transaction: MidtransChargeResponse) {
+    const actions = transaction.actions ?? [];
+    const deeplinkAction = actions.find((action) => {
+      return (
+        action.name === 'deeplink-redirect' ||
+        action.name === 'mobile_deeplink_checkout_url'
+      );
+    });
+    const qrAction = actions.find((action) => {
+      return (
+        action.name === 'generate-qr-code' ||
+        action.name === 'generate-qr-code-v2'
+      );
+    });
+
+    return {
+      payment_type: transaction.payment_type ?? null,
+      va_number:
+        transaction.va_numbers?.[0]?.va_number ??
+        transaction.permata_va_number ??
+        null,
+      bill_key: transaction.bill_key ?? null,
+      biller_code: transaction.biller_code ?? null,
+      qr_string: transaction.qr_string ?? qrAction?.url ?? null,
+      deeplink_url: deeplinkAction?.url ?? null,
+      actions,
+      expired_at: transaction.expiry_time ?? null,
+    };
   }
 
   async getMyOrders(
@@ -370,13 +587,22 @@ export class OrdersService {
       this.db.query<{
         payment_status: string;
         payment_type: string;
-        snap_token: string;
-        redirect_url: string;
+        payment_code: string;
+        va_number: string;
+        bill_key: string;
+        biller_code: string;
+        qr_string: string;
+        deeplink_url: string;
+        payment_actions: unknown;
+        transaction_id: string;
         gross_amount: string;
         paid_at: Date;
+        expired_at: Date;
       }>(
-        `SELECT payment_status, payment_type, snap_token, redirect_url,
-                gross_amount, paid_at
+        `SELECT payment_status, payment_type, payment_code, va_number,
+                bill_key, biller_code, qr_string, deeplink_url,
+                payment_actions, transaction_id, gross_amount, paid_at,
+                expired_at
          FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [orderId],
       ),
@@ -741,6 +967,12 @@ export class OrdersService {
       status_code?: string;
       gross_amount?: string;
       signature_key?: string;
+      va_numbers?: { bank: string; va_number: string }[];
+      permata_va_number?: string;
+      bill_key?: string;
+      biller_code?: string;
+      actions?: unknown[];
+      expiry_time?: string;
     };
     if (!data.order_id) return { status: 'ignored', message: 'No order_id' };
 
@@ -770,59 +1002,86 @@ export class OrdersService {
     try {
       await client.query('BEGIN');
 
-      let finalStatus = 'pending';
+      let paymentStatus = 'pending';
       let isPaid = false;
 
       if (transaction_status === 'capture') {
         if (fraud_status === 'challenge') {
-          finalStatus = 'challenge';
+          paymentStatus = 'pending';
         } else if (fraud_status === 'accept') {
-          finalStatus = 'settlement';
+          paymentStatus = 'paid';
           isPaid = true;
         }
       } else if (transaction_status === 'settlement') {
-        finalStatus = 'settlement';
+        paymentStatus = 'paid';
         isPaid = true;
-      } else if (
-        transaction_status === 'cancel' ||
-        transaction_status === 'deny' ||
-        transaction_status === 'expire'
-      ) {
-        finalStatus = transaction_status;
+      } else if (transaction_status === 'cancel') {
+        paymentStatus = 'cancelled';
+      } else if (transaction_status === 'deny') {
+        paymentStatus = 'failed';
+      } else if (transaction_status === 'expire') {
+        paymentStatus = 'expired';
       } else if (transaction_status === 'pending') {
-        finalStatus = 'pending';
+        paymentStatus = 'pending';
       }
 
       const orderPaymentStatus = isPaid
         ? 'paid'
-        : finalStatus === 'expire' ||
-            finalStatus === 'cancel' ||
-            finalStatus === 'deny'
-          ? 'cancelled'
+        : paymentStatus === 'expired' ||
+            paymentStatus === 'cancelled' ||
+            paymentStatus === 'failed'
+          ? paymentStatus
           : 'unpaid';
       const orderGeneralStatus = isPaid
         ? 'processing'
-        : finalStatus === 'expire' ||
-            finalStatus === 'cancel' ||
-            finalStatus === 'deny'
+        : paymentStatus === 'expired' ||
+            paymentStatus === 'cancelled' ||
+            paymentStatus === 'failed'
           ? 'cancelled'
           : 'pending';
 
-      const paymentsRes = await client.query<{ order_id: string }>(
-        `SELECT order_id FROM payments WHERE midtrans_order_id = $1`,
+      const paymentsRes = await client.query<{
+        order_id: string;
+        payment_status: string;
+      }>(
+        `SELECT order_id, payment_status FROM payments WHERE midtrans_order_id = $1`,
         [order_id],
       );
       const orderIds = paymentsRes.rows.map((r) => r.order_id);
+      const alreadyProcessed = paymentsRes.rows.every((row) => {
+        return row.payment_status === paymentStatus;
+      });
+
+      if (alreadyProcessed && orderIds.length > 0) {
+        await client.query('COMMIT');
+        return { status: 'ok', message: 'Webhook already processed' };
+      }
 
       if (orderIds.length > 0) {
         await client.query(
           `UPDATE payments 
-           SET payment_status = $1, payment_type = $2, transaction_id = $3, updated_at = NOW()
-           WHERE midtrans_order_id = $4`,
+           SET payment_status = $1,
+               payment_type = $2,
+               transaction_id = $3,
+               va_number = COALESCE($4, va_number),
+               bill_key = COALESCE($5, bill_key),
+               biller_code = COALESCE($6, biller_code),
+               payment_actions = COALESCE($7::jsonb, payment_actions),
+               fraud_status = $8,
+               raw_response = $9::jsonb,
+               paid_at = CASE WHEN $1 = 'paid' THEN NOW() ELSE paid_at END,
+               updated_at = NOW()
+           WHERE midtrans_order_id = $10`,
           [
-            finalStatus,
+            paymentStatus,
             data.payment_type || null,
             data.transaction_id || null,
+            data.va_numbers?.[0]?.va_number ?? data.permata_va_number ?? null,
+            data.bill_key ?? null,
+            data.biller_code ?? null,
+            data.actions ? JSON.stringify(data.actions) : null,
+            data.fraud_status ?? null,
+            JSON.stringify(payload),
             order_id,
           ],
         );
@@ -847,9 +1106,9 @@ export class OrdersService {
         }
 
         if (
-          finalStatus === 'expire' ||
-          finalStatus === 'cancel' ||
-          finalStatus === 'deny'
+          paymentStatus === 'expired' ||
+          paymentStatus === 'cancelled' ||
+          paymentStatus === 'failed'
         ) {
           for (const oid of orderIds) {
             const itemsRes = await client.query<{

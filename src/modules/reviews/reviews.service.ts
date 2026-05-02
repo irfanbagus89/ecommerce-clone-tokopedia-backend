@@ -5,15 +5,18 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Pool } from 'pg';
 import { ReviewsResponse } from './interface/reviews.interface';
-import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { CloudinaryService } from 'src/common';
 
 @Injectable()
 export class ReviewsService {
-  constructor(@Inject('DATABASE_POOL') private db: Pool) {}
+  constructor(
+    @Inject('DATABASE_POOL') private db: Pool,
+    @Optional() private readonly cloudinary?: CloudinaryService,
+  ) {}
 
   async getReviewsById(
     id: string,
@@ -260,19 +263,36 @@ export class ReviewsService {
       );
     }
 
-    const uploadsDir = join(process.cwd(), 'uploads');
-    if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
-
     const savedUrls: string[] = [];
+    const hasPublicIdColumn = await this.hasColumn(
+      'review_images',
+      'cloudinary_public_id',
+    );
+
     for (const file of files) {
-      const fileName = `review-${Date.now()}-${file.originalname}`;
-      writeFileSync(join(uploadsDir, fileName), file.buffer);
-      await this.db.query(
-        `INSERT INTO review_images (review_id, image_url, created_at)
-         VALUES ($1, $2, NOW())`,
-        [reviewId, fileName],
+      if (!this.cloudinary) {
+        throw new BadRequestException('Cloudinary service is not available');
+      }
+      const uploaded = await this.cloudinary.uploadImage(
+        file,
+        'reviews',
+        `review-${reviewId}`,
       );
-      savedUrls.push(fileName);
+      if (hasPublicIdColumn) {
+        await this.db.query(
+          `INSERT INTO review_images
+             (review_id, image_url, cloudinary_public_id, created_at)
+           VALUES ($1, $2, $3, NOW())`,
+          [reviewId, uploaded.secure_url, uploaded.public_id],
+        );
+      } else {
+        await this.db.query(
+          `INSERT INTO review_images (review_id, image_url, created_at)
+           VALUES ($1, $2, NOW())`,
+          [reviewId, uploaded.secure_url],
+        );
+      }
+      savedUrls.push(uploaded.secure_url);
     }
 
     return { message: 'Images uploaded successfully', images: savedUrls };
@@ -316,5 +336,20 @@ export class ReviewsService {
     } finally {
       client.release();
     }
+  }
+
+  private async hasColumn(tableName: string, columnName: string) {
+    const result = await this.db.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = $1
+           AND column_name = $2
+       )`,
+      [tableName, columnName],
+    );
+
+    return result.rows[0]?.exists ?? false;
   }
 }

@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { CloudinaryService } from 'src/common';
 
 const mockDb = {
   query: jest.fn(),
@@ -17,6 +18,10 @@ const mockClient = {
   release: jest.fn(),
 };
 
+const mockCloudinary = {
+  uploadImage: jest.fn(),
+};
+
 describe('ReviewsService', () => {
   let service: ReviewsService;
 
@@ -24,11 +29,16 @@ describe('ReviewsService', () => {
     jest.clearAllMocks();
     mockDb.connect.mockResolvedValue(mockClient);
     mockClient.query.mockResolvedValue({ rows: [] });
+    mockCloudinary.uploadImage.mockResolvedValue({
+      secure_url: 'https://res.cloudinary.com/demo/review/a.jpg',
+      public_id: 'ecommerce/reviews/a',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReviewsService,
         { provide: 'DATABASE_POOL', useValue: mockDb },
+        { provide: CloudinaryService, useValue: mockCloudinary },
       ],
     }).compile();
     service = module.get<ReviewsService>(ReviewsService);
@@ -125,6 +135,7 @@ describe('ReviewsService', () => {
       mockDb.query
         .mockResolvedValueOnce({ rows: [{ id: 'rv1', user_id: 'user1' }] }) // review check
         .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // current count
+        .mockResolvedValueOnce({ rows: [{ exists: true }] }) // cloudinary_public_id column
         .mockResolvedValueOnce({ rows: [] }); // insert image
       const files = [
         { originalname: 'a.jpg', buffer: Buffer.from('test') },

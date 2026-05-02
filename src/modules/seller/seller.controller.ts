@@ -170,6 +170,12 @@ export class SellerController {
     return this.sellerService.deleteProductVariant(id, user_id);
   }
 
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  getProfile(@CurrentUser('sub') user_id: string) {
+    return this.sellerService.getProfile(user_id);
+  }
+
   @Get(':id')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
@@ -184,11 +190,5 @@ export class SellerController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ) {
     return this.productService.getProductDetail(id);
-  }
-
-  @Get('profile')
-  @UseGuards(JwtAuthGuard)
-  getProfile(@CurrentUser('sub') user_id: string) {
-    return this.sellerService.getProfile(user_id);
   }
 }

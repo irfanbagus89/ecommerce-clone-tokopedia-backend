@@ -7,7 +7,7 @@ import { SellerDashboardController } from './seller-dashboard.controller';
 
 @Module({
   imports: [ProductsModule],
-  controllers: [SellerController, SellerDashboardController],
+  controllers: [SellerDashboardController, SellerController],
   providers: [SellerService, SellerDashboardService],
   exports: [SellerService],
 })

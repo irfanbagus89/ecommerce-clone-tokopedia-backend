@@ -17,11 +17,14 @@ import { WishlistsModule } from './modules/wishlists/wishlists.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { CloudinaryModule } from './common/cloudinary';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    CloudinaryModule,
     DatabaseModule,
     AuthModule,
     SellerModule,
@@ -36,6 +39,7 @@ import { ChatModule } from './modules/chat/chat.module';
     AddressesModule,
     NotificationsModule,
     ChatModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

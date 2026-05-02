@@ -14,6 +14,10 @@ export class CheckoutDto {
 
   @IsString()
   @IsOptional()
+  payment_method_code?: string;
+
+  @IsString()
+  @IsOptional()
   address?: string;
 
   @IsString()

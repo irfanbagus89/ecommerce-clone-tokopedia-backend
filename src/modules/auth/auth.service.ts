@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -12,14 +13,14 @@ import { JwtPayloadCreate } from '../../common/decorators';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { hashPassword, verifyPassword } from 'src/common';
-import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { CloudinaryService } from 'src/common';
 
 @Injectable()
 export class AuthService {
   constructor(
     private jwtService: JwtService,
     @Inject('DATABASE_POOL') private db: Pool,
+    @Optional() private readonly cloudinary?: CloudinaryService,
   ) {}
 
   async register(data: RegisterDto): Promise<{
@@ -150,12 +151,25 @@ export class AuthService {
     }
 
     if (avatarFile) {
-      const uploadsDir = join(process.cwd(), 'uploads');
-      if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
-      const fileName = `avatar-${userId}-${Date.now()}-${avatarFile.originalname}`;
-      writeFileSync(join(uploadsDir, fileName), avatarFile.buffer);
+      if (!this.cloudinary) {
+        throw new BadRequestException('Cloudinary service is not available');
+      }
+      const uploaded = await this.cloudinary.uploadImage(
+        avatarFile,
+        'avatars',
+        `avatar-${userId}`,
+      );
       setParts.push(`avatar = $${idx++}`);
-      params.push(fileName);
+      params.push(uploaded.secure_url);
+
+      const hasPublicIdColumn = await this.hasColumn(
+        'users',
+        'avatar_public_id',
+      );
+      if (hasPublicIdColumn) {
+        setParts.push(`avatar_public_id = $${idx++}`);
+        params.push(uploaded.public_id);
+      }
     }
 
     if (setParts.length === 0) {
@@ -217,5 +231,20 @@ export class AuthService {
     };
 
     return this.jwtService.sign(payload);
+  }
+
+  private async hasColumn(tableName: string, columnName: string) {
+    const result = await this.db.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = $1
+           AND column_name = $2
+       )`,
+      [tableName, columnName],
+    );
+
+    return result.rows[0]?.exists ?? false;
   }
 }

@@ -6,15 +6,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-jest.mock('midtrans-client', () => ({
-  Snap: jest.fn().mockImplementation(() => ({
-    createTransaction: jest.fn().mockResolvedValue({
-      token: 'snap-token',
-      redirect_url: 'https://payment.url',
-    }),
-  })),
-}));
-
 const mockDb = {
   query: jest.fn(),
   connect: jest.fn(),

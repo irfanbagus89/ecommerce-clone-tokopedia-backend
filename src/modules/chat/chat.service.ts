@@ -3,14 +3,17 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Pool } from 'pg';
-import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { CloudinaryService } from 'src/common';
 
 @Injectable()
 export class ChatService {
-  constructor(@Inject('DATABASE_POOL') private db: Pool) {}
+  constructor(
+    @Inject('DATABASE_POOL') private db: Pool,
+    @Optional() private readonly cloudinary?: CloudinaryService,
+  ) {}
 
   async getConversations(userId: string) {
     const rows = await this.db.query<{
@@ -179,19 +182,41 @@ export class ChatService {
     }
 
     let imageUrl: string | null = null;
+    let cloudinaryPublicId: string | null = null;
     if (imageFile) {
-      const uploadsDir = join(process.cwd(), 'uploads');
-      if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
-      const fileName = `chat-${Date.now()}-${imageFile.originalname}`;
-      writeFileSync(join(uploadsDir, fileName), imageFile.buffer);
-      imageUrl = fileName;
+      if (!this.cloudinary) {
+        throw new BadRequestException('Cloudinary service is not available');
+      }
+      const uploaded = await this.cloudinary.uploadImage(
+        imageFile,
+        'chat',
+        `chat-${conversationId}`,
+      );
+      imageUrl = uploaded.secure_url;
+      cloudinaryPublicId = uploaded.public_id;
     }
 
-    const result = await this.db.query<{ id: string }>(
-      `INSERT INTO chat_messages (conversation_id, sender_id, message, image_url)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [conversationId, senderId, message ?? null, imageUrl],
-    );
+    const hasPublicIdColumn = cloudinaryPublicId
+      ? await this.hasColumn('chat_messages', 'cloudinary_public_id')
+      : false;
+    const result = hasPublicIdColumn
+      ? await this.db.query<{ id: string }>(
+          `INSERT INTO chat_messages
+             (conversation_id, sender_id, message, image_url, cloudinary_public_id)
+           VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+          [
+            conversationId,
+            senderId,
+            message ?? null,
+            imageUrl,
+            cloudinaryPublicId,
+          ],
+        )
+      : await this.db.query<{ id: string }>(
+          `INSERT INTO chat_messages (conversation_id, sender_id, message, image_url)
+           VALUES ($1, $2, $3, $4) RETURNING id`,
+          [conversationId, senderId, message ?? null, imageUrl],
+        );
 
     await this.db.query(
       `UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1`,
@@ -238,5 +263,20 @@ export class ChatService {
     ]);
 
     return { message: 'Conversation deleted' };
+  }
+
+  private async hasColumn(tableName: string, columnName: string) {
+    const result = await this.db.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = $1
+           AND column_name = $2
+       )`,
+      [tableName, columnName],
+    );
+
+    return result.rows[0]?.exists ?? false;
   }
 }

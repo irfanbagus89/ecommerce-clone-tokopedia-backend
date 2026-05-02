@@ -25,7 +25,6 @@ export class AddressesController {
   getAddresses(@CurrentUser('sub') userId: string) {
     return this.addressesService.getAddresses(userId);
   }
-
   @Post()
   @HttpCode(201)
   createAddress(
@@ -33,6 +32,26 @@ export class AddressesController {
     @Body() dto: CreateAddressDto,
   ) {
     return this.addressesService.createAddress(userId, dto);
+  }
+
+  @Get('province')
+  getProvince() {
+    return this.addressesService.getProvince();
+  }
+
+  @Get('city/:provinceId')
+  getCity(@Param('provinceId') provinceId: string) {
+    return this.addressesService.getCity(provinceId);
+  }
+
+  @Get('kecamatan/:cityId')
+  getKecamatan(@Param('cityId') cityId: string) {
+    return this.addressesService.getKecamatan(cityId);
+  }
+
+  @Get('kelurahan/:kecamatanId')
+  getKelurahan(@Param('kecamatanId') kecamatanId: string) {
+    return this.addressesService.getKelurahan(kecamatanId);
   }
 
   @Patch(':id')

@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Pool } from 'pg';
 import {
@@ -17,12 +18,14 @@ import {
   UpdateSellerProfileDto,
   UpdateStockDto,
 } from './dto/update.dto';
-import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { CloudinaryService } from 'src/common';
 
 @Injectable()
 export class SellerService {
-  constructor(@Inject('DATABASE_POOL') private db: Pool) {}
+  constructor(
+    @Inject('DATABASE_POOL') private db: Pool,
+    @Optional() private readonly cloudinary?: CloudinaryService,
+  ) {}
 
   async create(
     data: CreateDto,
@@ -40,24 +43,14 @@ export class SellerService {
       [userId],
     );
 
-    const uploadsDir = join(process.cwd(), 'uploads');
-    if (!existsSync(uploadsDir)) {
-      mkdirSync(uploadsDir);
-    }
+    if (!seller.rows[0]) throw new NotFoundException('Seller not found');
 
-    const saveFile = (file?: Express.Multer.File) => {
-      if (!file) return null;
-      const fileName = `${Date.now()}-${file.originalname}`;
-      const filePath = join(uploadsDir, fileName);
-      writeFileSync(filePath, file.buffer);
-      return fileName;
-    };
-
-    const imageUrl1 = saveFile(files.image?.[0]);
-    const imageUrl2 = saveFile(files.image2?.[0]);
-    const imageUrl3 = saveFile(files.image3?.[0]);
-    const imageUrl4 = saveFile(files.image4?.[0]);
-    const imageUrl5 = saveFile(files.image5?.[0]);
+    const uploadedImages = await this.uploadProductImages(files);
+    const imageUrl1 = uploadedImages[0]?.secure_url ?? null;
+    const imageUrl2 = uploadedImages[1]?.secure_url ?? null;
+    const imageUrl3 = uploadedImages[2]?.secure_url ?? null;
+    const imageUrl4 = uploadedImages[3]?.secure_url ?? null;
+    const imageUrl5 = uploadedImages[4]?.secure_url ?? null;
 
     const createProduct = await this.db.query<{ id: string; name: string }>(
       `INSERT INTO "products" 
@@ -80,6 +73,12 @@ export class SellerService {
     );
 
     const productId = createProduct.rows[0].id;
+    await this.insertProductImages(
+      productId,
+      uploadedImages.filter((image): image is NonNullable<typeof image> => {
+        return image !== null;
+      }),
+    );
 
     if (data.variants?.length) {
       for (const v of data.variants) {
@@ -360,16 +359,6 @@ export class SellerService {
     );
     if (!productRes.rows[0]) throw new NotFoundException('Product not found');
 
-    const uploadsDir = join(process.cwd(), 'uploads');
-    if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
-
-    const saveFile = (file?: Express.Multer.File) => {
-      if (!file) return undefined;
-      const fileName = `${Date.now()}-${file.originalname}`;
-      writeFileSync(join(uploadsDir, fileName), file.buffer);
-      return fileName;
-    };
-
     const setParts: string[] = [];
     const params: unknown[] = [];
     let idx = 1;
@@ -391,11 +380,12 @@ export class SellerService {
       params.push(dto.category_id);
     }
 
-    const img1 = saveFile(files.image?.[0]);
-    const img2 = saveFile(files.image2?.[0]);
-    const img3 = saveFile(files.image3?.[0]);
-    const img4 = saveFile(files.image4?.[0]);
-    const img5 = saveFile(files.image5?.[0]);
+    const uploadedImages = await this.uploadProductImages(files);
+    const img1 = uploadedImages[0]?.secure_url;
+    const img2 = uploadedImages[1]?.secure_url;
+    const img3 = uploadedImages[2]?.secure_url;
+    const img4 = uploadedImages[3]?.secure_url;
+    const img5 = uploadedImages[4]?.secure_url;
 
     if (img1) {
       setParts.push(`image_url = $${idx++}`);
@@ -427,6 +417,12 @@ export class SellerService {
     await this.db.query(
       `UPDATE products SET ${setParts.join(', ')} WHERE id = $${idx}`,
       params,
+    );
+    await this.insertProductImages(
+      productId,
+      uploadedImages.filter((image): image is NonNullable<typeof image> => {
+        return image !== null;
+      }),
     );
 
     return { message: 'Product updated successfully' };
@@ -536,5 +532,82 @@ export class SellerService {
     );
 
     return { message: 'Seller profile updated successfully' };
+  }
+
+  private async uploadProductImages(files: {
+    image?: Express.Multer.File[];
+    image2?: Express.Multer.File[];
+    image3?: Express.Multer.File[];
+    image4?: Express.Multer.File[];
+    image5?: Express.Multer.File[];
+  }) {
+    const orderedFiles = [
+      files.image?.[0],
+      files.image2?.[0],
+      files.image3?.[0],
+      files.image4?.[0],
+      files.image5?.[0],
+    ];
+    const uploaded: ({
+      secure_url: string;
+      public_id: string;
+      sort_order: number;
+    } | null)[] = [];
+
+    for (const [index, file] of orderedFiles.entries()) {
+      if (!file) {
+        uploaded[index] = null;
+        continue;
+      }
+      if (!this.cloudinary) {
+        throw new BadRequestException('Cloudinary service is not available');
+      }
+      const result = await this.cloudinary.uploadImage(
+        file,
+        'products',
+        `product-${index + 1}`,
+      );
+      uploaded[index] = { ...result, sort_order: index + 1 };
+    }
+
+    return uploaded;
+  }
+
+  private async insertProductImages(
+    productId: string,
+    images: { secure_url: string; public_id: string; sort_order: number }[],
+  ) {
+    if (images.length === 0) return;
+    const hasTable = await this.hasTable('product_images');
+    if (!hasTable) return;
+
+    for (const image of images) {
+      await this.db.query(
+        `INSERT INTO product_images
+           (product_id, image_url, cloudinary_public_id, sort_order, is_primary, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [
+          productId,
+          image.secure_url,
+          image.public_id,
+          image.sort_order,
+          image.sort_order === 1,
+        ],
+      );
+    }
+  }
+
+  private async hasTable(tableName: string) {
+    const result = await this.db.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM information_schema.tables
+         WHERE table_schema = 'public'
+           AND table_name = $1
+       )`,
+      [tableName],
+    );
+
+    return result.rows[0]?.exists ?? false;
   }
 }

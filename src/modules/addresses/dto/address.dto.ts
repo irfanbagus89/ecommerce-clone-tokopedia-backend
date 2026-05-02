@@ -1,4 +1,10 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateAddressDto {
@@ -18,17 +24,17 @@ export class CreateAddressDto {
   @IsNotEmpty()
   address: string;
 
-  @IsString()
-  @IsOptional()
-  city?: string;
+  @IsNumber()
+  city_id: number;
 
-  @IsString()
-  @IsOptional()
-  kecamatan?: string;
+  @IsNumber()
+  kecamatan_id: number;
 
-  @IsString()
-  @IsOptional()
-  kelurahan?: string;
+  @IsNumber()
+  kelurahan_id: number;
+
+  @IsNumber()
+  province_id: number;
 
   @IsString()
   @IsOptional()

@@ -53,9 +53,9 @@ export class AddressesService {
 
       const result = await client.query<{ id: string }>(
         `INSERT INTO user_addresses
-        (user_id, label, recipient_name, phone, address, city,
-         kecamatan, kelurahan, postal_code, is_default)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        (user_id, label, recipient_name, phone, address, city_id,
+         kecamatan_id, kelurahan_id, province_id, postal_code, is_default)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING id`,
         [
           userId,
@@ -63,9 +63,10 @@ export class AddressesService {
           dto.recipient_name,
           dto.phone,
           dto.address,
-          dto.city,
-          dto.kecamatan,
-          dto.kelurahan,
+          dto.city_id,
+          dto.kecamatan_id,
+          dto.kelurahan_id,
+          dto.province_id,
           dto.postal_code,
           dto.is_default,
         ],
@@ -206,5 +207,76 @@ export class AddressesService {
     );
     if (!res.rows[0]) throw new NotFoundException('No default address set');
     return res.rows[0];
+  }
+
+  async getProvince(): Promise<
+    {
+      id: string;
+      name: string;
+    }[]
+  > {
+    const res = await this.db.query<{ id: string; name: string }>(
+      `SELECT id, name FROM provinces`,
+    );
+    return res.rows.map((province) => {
+      return {
+        id: province.id,
+        name: province.name,
+      };
+    });
+  }
+
+  async getCity(provinceId: string): Promise<
+    {
+      id: string;
+      name: string;
+    }[]
+  > {
+    const res = await this.db.query<{ id: string; name: string }>(
+      `SELECT id, name FROM cities WHERE province_id = $1`,
+      [provinceId],
+    );
+    return res.rows.map((city) => {
+      return {
+        id: city.id,
+        name: city.name,
+      };
+    });
+  }
+
+  async getKecamatan(cityId: string): Promise<
+    {
+      id: string;
+      name: string;
+    }[]
+  > {
+    const res = await this.db.query<{ id: string; name: string }>(
+      `SELECT id, name FROM kecamatan WHERE city_id = $1`,
+      [cityId],
+    );
+    return res.rows.map((kecamatan) => {
+      return {
+        id: kecamatan.id,
+        name: kecamatan.name,
+      };
+    });
+  }
+
+  async getKelurahan(kecamatanId: string): Promise<
+    {
+      id: string;
+      name: string;
+    }[]
+  > {
+    const res = await this.db.query<{
+      id: string;
+      name: string;
+    }>(`SELECT id, name FROM kelurahan WHERE kecamatan_id = $1`, [kecamatanId]);
+    return res.rows.map((kelurahan) => {
+      return {
+        id: kelurahan.id,
+        name: kelurahan.name,
+      };
+    });
   }
 }
