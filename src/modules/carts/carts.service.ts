@@ -48,12 +48,18 @@ export class CartsService {
         throw new ConflictException('Stock tidak mencukupi');
       }
 
-      const createCartItem = await this.db.query<{ cart_id: string }>(
-        'INSERT INTO cart_items (cart_id, seller_id, product_id, variant_id, quantity) VALUES ($1, $2, $3, $4, $5) RETURNING cart_id',
+      const createCartItem = await this.db.query<{
+        id: string;
+        cart_id: string;
+      }>(
+        'INSERT INTO cart_items (cart_id, seller_id, product_id, variant_id, quantity) VALUES ($1, $2, $3, $4, $5) RETURNING id, cart_id',
         [createCart.rows[0].id, sellerId, productId, variantId, quantity],
       );
       return {
-        data: { cart_id: createCartItem.rows[0].cart_id },
+        data: {
+          cart_id: createCartItem.rows[0].cart_id,
+          cart_item_id: createCartItem.rows[0].id,
+        },
         message: 'Product berhasil ditambahkan',
       };
     } else {

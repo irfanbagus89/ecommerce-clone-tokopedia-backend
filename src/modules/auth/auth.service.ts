@@ -68,6 +68,7 @@ export class AuthService {
     user: {
       id: string;
       email: string;
+      role: string;
     };
   }> {
     const userResult = await this.db.query<{
@@ -105,6 +106,7 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
+        role: user.role,
       },
     };
   }
