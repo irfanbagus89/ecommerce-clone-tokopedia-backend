@@ -38,6 +38,13 @@ export class CartsController {
     return this.cartsService.getMyCart(user_id);
   }
 
+  @Get('checkout')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  getMyCartCheckout(@CurrentUser('sub') user_id: string) {
+    return this.cartsService.getMyCartCheckout(user_id);
+  }
+
   @Get('count-mycart')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)

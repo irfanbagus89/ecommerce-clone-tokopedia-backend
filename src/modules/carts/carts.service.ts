@@ -246,6 +246,107 @@ export class CartsService {
     };
   }
 
+  async getMyCartCheckout(userId: string): Promise<CartsResponse> {
+    const cart = await this.db.query<{ id: string }>(
+      `SELECT id FROM carts WHERE user_id = $1`,
+      [userId],
+    );
+
+    if (cart.rowCount === 0) {
+      return { sellers: [] };
+    }
+
+    const cartItems = await this.db.query<{
+      cart_id: string;
+      cart_item_id: string;
+      seller_id: string;
+      seller_name: string;
+      product_id: string;
+      product_name: string;
+      price: number | null;
+      original_price: number;
+      variant_id: string;
+      variant_name: string;
+      additional_price: number;
+      stock: number;
+      quantity: number;
+      image_url: string;
+      category_id: string;
+      is_checked: boolean;
+    }>(
+      `
+    SELECT 
+      ci.cart_id,
+      ci.id AS cart_item_id,
+      ci.seller_id,
+      s.store_name AS seller_name,
+      p.id AS product_id,
+      p.name AS product_name,
+      p.price,
+      p.original_price,
+      pv.id AS variant_id,
+      pv.variant_name AS variant_name,
+      pv.additional_price,
+      pv.stock,
+      ci.quantity,
+      p.image_url,
+      p.category_id,
+      ci.is_checked
+    FROM cart_items ci
+    JOIN carts c ON c.id = ci.cart_id
+    JOIN products p ON p.id = ci.product_id
+    JOIN product_variants pv ON pv.id = ci.variant_id
+    JOIN sellers s ON s.id = ci.seller_id
+    WHERE c.user_id = $1 AND ci.is_checked = true
+    ORDER BY s.store_name ASC, p.name ASC, pv.variant_name ASC, ci.id ASC
+    `,
+      [userId],
+    );
+
+    const sellers: CartsResponse['sellers'] = [];
+
+    for (const item of cartItems.rows) {
+      let seller = sellers.find((s) => s.seller_id === item.seller_id);
+
+      if (!seller) {
+        seller = {
+          seller_id: item.seller_id,
+          seller_name: item.seller_name,
+          items: [],
+        };
+        sellers.push(seller);
+      }
+
+      seller.items.push({
+        cart_id: item.cart_id,
+        cart_item_id: item.cart_item_id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        variant_id: item.variant_id,
+        variant_name: item.variant_name,
+
+        price: item.price
+          ? Number(item.price) + Number(item.additional_price)
+          : null,
+        original_price:
+          Number(item.original_price) + Number(item.additional_price),
+        discount: item.price
+          ? this.calcDiscount(item.price, item.original_price)
+          : null,
+
+        quantity: item.quantity,
+        stock: item.stock,
+        image_url: item.image_url,
+        category_id: item.category_id,
+        is_checked: item.is_checked,
+      });
+    }
+
+    return {
+      sellers,
+    };
+  }
+
   async getCountMyCart(user_id: string): Promise<{ count: number }> {
     const count = await this.db.query<{ total: number }>(
       `SELECT SUM(ci.quantity) as total from carts c JOIN cart_items ci ON ci.cart_id = c.id where user_id = $1`,

@@ -13,6 +13,7 @@ export interface AddressRow {
   recipient_name: string;
   phone: string | null;
   address: string;
+  province: string | null;
   city: string | null;
   kecamatan: string | null;
   kelurahan: string | null;
@@ -26,11 +27,29 @@ export class AddressesService {
 
   async getAddresses(userId: string): Promise<AddressRow[]> {
     const rows = await this.db.query<AddressRow>(
-      `SELECT id, label, recipient_name, phone, address, city,
-              kecamatan, kelurahan, postal_code, is_default
-       FROM user_addresses
-       WHERE user_id = $1
-       ORDER BY is_default DESC, created_at DESC`,
+      `SELECT
+         ua.id,
+         ua.label,
+         ua.recipient_name,
+         ua.phone,
+         ua.address,
+         ua.province_id,
+         ua.city_id,
+         ua.kecamatan_id,
+         ua.kelurahan_id,
+         p."name" AS province,
+         c."name" AS city,
+         k."name" AS kecamatan,
+         k2."name" AS kelurahan,
+         ua.postal_code,
+         ua.is_default
+       FROM user_addresses ua
+       JOIN provinces p ON p.id = ua.province_id
+       JOIN cities c ON c.id = ua.city_id
+       JOIN kecamatan k ON k.id = ua.kecamatan_id
+       JOIN kelurahan k2 ON k2.id = ua.kelurahan_id
+       WHERE ua.user_id = $1
+       ORDER BY ua.is_default DESC, ua.created_at DESC`,
       [userId],
     );
     return rows.rows;
@@ -198,9 +217,27 @@ export class AddressesService {
 
   async getDefaultAddress(userId: string): Promise<AddressRow> {
     const res = await this.db.query<AddressRow>(
-      `SELECT id, label, recipient_name, phone, address, city,
-              kecamatan, kelurahan, postal_code, is_default
-       FROM user_addresses
+      `SELECT
+         ua.id,
+         ua.label,
+         ua.recipient_name,
+         ua.phone,
+         ua.address,
+         ua.province_id,
+         ua.city_id,
+         ua.kecamatan_id,
+         ua.kelurahan_id,
+         p."name" AS province,
+         c."name" AS city,
+         k."name" AS kecamatan,
+         k2."name" AS kelurahan,
+         ua.postal_code,
+         ua.is_default
+       FROM user_addresses ua
+       JOIN provinces p ON p.id = ua.province_id
+       JOIN cities c ON c.id = ua.city_id
+       JOIN kecamatan k ON k.id = ua.kecamatan_id
+       JOIN kelurahan k2 ON k2.id = ua.kelurahan_id
        WHERE user_id = $1 AND is_default = true
        LIMIT 1`,
       [userId],
