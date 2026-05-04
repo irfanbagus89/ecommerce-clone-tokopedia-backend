@@ -158,6 +158,7 @@ export class OrdersService {
       const paymentInstructions = this.extractPaymentInstructions(transaction);
 
       const invoiceBase = `INV/${new Date().toISOString().slice(0, 10).replace(/-/g, '')}/TRX`;
+      const orderIdList: string[] = [];
 
       for (const [sellerId, group] of sellersMap.entries()) {
         const invoiceNumber = `${invoiceBase}/${sellerId.substring(0, 8).toUpperCase()}/${randomSuffix.toUpperCase()}`;
@@ -180,6 +181,7 @@ export class OrdersService {
           ],
         );
         const orderId = orderRes.rows[0].id;
+        orderIdList.push(orderId);
 
         await client.query(
           `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
@@ -265,6 +267,7 @@ export class OrdersService {
         message: 'Checkout successful',
         data: {
           midtrans_order_id: midtransOrderId,
+          order_ids: orderIdList,
           payment_method: paymentMethod,
           transaction_id: transaction.transaction_id ?? null,
           payment_type:
