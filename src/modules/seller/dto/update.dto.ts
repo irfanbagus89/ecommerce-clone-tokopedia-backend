@@ -1,10 +1,12 @@
 import {
   IsArray,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -56,7 +58,7 @@ export class UpdateSellerProfileDto {
 
   @IsString()
   @IsOptional()
-  seller_location?: string;
+  phone?: string;
 
   @IsString()
   @IsOptional()
@@ -64,13 +66,29 @@ export class UpdateSellerProfileDto {
 
   @IsString()
   @IsOptional()
-  kecamatan?: string;
+  postal_code?: string;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  kelurahan?: string;
+  province_id?: number;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  kode_pos?: string;
+  city_id?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  kecamatan_id?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  kelurahan_id?: number;
 }

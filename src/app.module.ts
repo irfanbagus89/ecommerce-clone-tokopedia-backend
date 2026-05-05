@@ -18,6 +18,7 @@ import { AddressesModule } from './modules/addresses/addresses.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { ShippingModule } from './modules/shipping/shipping.module';
 import { CloudinaryModule } from './common/cloudinary';
 
 @Module({
@@ -40,6 +41,7 @@ import { CloudinaryModule } from './common/cloudinary';
     NotificationsModule,
     ChatModule,
     PaymentsModule,
+    ShippingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

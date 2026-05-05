@@ -10,6 +10,9 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { Pool } from 'pg';
 import { randomBytes, createHash } from 'crypto';
+import { ShippingSelectionDto } from './dto/checkout.dto';
+import { ShippingService } from '../shipping/shipping.service';
+import { VouchersService } from '../vouchers/vouchers.service';
 
 interface SellerGroup {
   items: {
@@ -26,6 +29,8 @@ interface SellerGroup {
     calculated_price: number;
   }[];
   subtotal: number;
+  shippingCost: number;
+  shippingMethod: string;
 }
 
 interface PaymentMethodRow {
@@ -55,12 +60,101 @@ interface MidtransChargeResponse {
   [key: string]: unknown;
 }
 
+const SERVICE_FEE = 2000;
+const INSURANCE_FEE = 3200;
+
 @Injectable()
 export class OrdersService {
   constructor(
     @Inject('DATABASE_POOL') private db: Pool,
+    private readonly shippingService: ShippingService,
+    private readonly vouchersService: VouchersService,
     @Optional() private readonly config?: ConfigService,
   ) {}
+
+  async checkoutPreview(
+    userId: string,
+    cartItemIds: string[],
+    shippingCostTotal?: number,
+    voucherCode?: string,
+  ) {
+    if (!cartItemIds || cartItemIds.length === 0) {
+      throw new BadRequestException('Cart items cannot be empty');
+    }
+
+    const result = await this.db.query<{
+      cart_item_id: string;
+      quantity: number;
+      base_price: string;
+      additional_price: string;
+      original_price: string;
+    }>(
+      `SELECT
+         ci.id AS cart_item_id,
+         ci.quantity,
+         COALESCE(p.price, p.original_price) AS base_price,
+         COALESCE(pv.additional_price, 0) AS additional_price,
+         p.original_price
+       FROM cart_items ci
+       JOIN products p ON p.id = ci.product_id
+       JOIN product_variants pv ON pv.id = ci.variant_id
+       WHERE ci.id = ANY($1)
+         AND ci.cart_id IN (SELECT id FROM carts WHERE user_id = $2)`,
+      [cartItemIds, userId],
+    );
+
+    if (result.rows.length !== cartItemIds.length) {
+      throw new BadRequestException('Some cart items are invalid or do not belong to you');
+    }
+
+    let originalPrice = 0;
+    let subtotal = 0;
+    let itemsCount = 0;
+
+    for (const item of result.rows) {
+      const origUnit = Number(item.original_price) + Number(item.additional_price);
+      const discountedUnit = Number(item.base_price) + Number(item.additional_price);
+      originalPrice += origUnit * Number(item.quantity);
+      subtotal += discountedUnit * Number(item.quantity);
+      itemsCount += Number(item.quantity);
+    }
+
+    const itemDiscount = originalPrice - subtotal;
+    const shippingCost = shippingCostTotal ?? 0;
+
+    let voucherDiscount = 0;
+    let voucherInfo: { voucher_id: string; code: string; type: string; discount_amount: number } | null = null;
+
+    if (voucherCode) {
+      try {
+        const v = await this.vouchersService.validateVoucher(voucherCode, userId, subtotal);
+        voucherDiscount = v.discount;
+        voucherInfo = {
+          voucher_id: v.voucher_id,
+          code: v.code,
+          type: v.type,
+          discount_amount: v.discount,
+        };
+      } catch {
+        throw new BadRequestException('Voucher tidak valid atau sudah tidak berlaku');
+      }
+    }
+
+    const total = Math.max(0, subtotal - voucherDiscount + shippingCost + SERVICE_FEE + INSURANCE_FEE);
+
+    return {
+      original_price: originalPrice,
+      subtotal,
+      item_discount: itemDiscount,
+      shipping_cost: shippingCost,
+      service_fee: SERVICE_FEE,
+      insurance_fee: INSURANCE_FEE,
+      voucher_discount: voucherDiscount,
+      total,
+      items_count: itemsCount,
+      voucher: voucherInfo,
+    };
+  }
 
   async checkout(
     userId: string,
@@ -69,9 +163,36 @@ export class OrdersService {
     address?: string,
     city?: string,
     postalCode?: string,
+    shippingSelections?: ShippingSelectionDto[],
+    shippingCostTotal?: number,
+    shippingMethod?: string,
+    voucherCode?: string,
   ) {
     if (!cartItemIds || cartItemIds.length === 0) {
       throw new BadRequestException('Cart items cannot be empty');
+    }
+
+    // Hitung ongkir dari RajaOngkir di backend sebelum transaksi DB
+    const resolvedShippingMap = new Map<
+      string,
+      { cost: number; method: string }
+    >();
+    if (shippingSelections && shippingSelections.length > 0) {
+      await Promise.all(
+        shippingSelections.map(async (s) => {
+          const cost = await this.shippingService.getServiceCost({
+            origin_city_id: s.origin_city_id,
+            destination_city_id: s.destination_city_id,
+            weight: s.weight,
+            courier: s.courier,
+            service: s.service,
+          });
+          resolvedShippingMap.set(s.seller_id, {
+            cost,
+            method: `${s.courier.toUpperCase()} ${s.service.toUpperCase()}`,
+          });
+        }),
+      );
     }
 
     const client = await this.db.connect();
@@ -136,13 +257,57 @@ export class OrdersService {
         };
 
         if (!sellersMap.has(item.seller_id)) {
-          sellersMap.set(item.seller_id, { items: [], subtotal: 0 });
+          const resolved = resolvedShippingMap.get(item.seller_id);
+          sellersMap.set(item.seller_id, {
+            items: [],
+            subtotal: 0,
+            shippingCost: resolved?.cost ?? 0,
+            shippingMethod: resolved?.method ?? '',
+          });
         }
         const sellerGroup = sellersMap.get(item.seller_id)!;
         sellerGroup.items.push(calculatedItem);
         sellerGroup.subtotal += itemTotal;
         totalGrossAmount += itemTotal;
       }
+
+      // Distribusi ongkir: dari RajaOngkir jika ada shipping_selections,
+      // atau dari flat shippingCostTotal ke seller pertama jika tidak
+      if (!shippingSelections || shippingSelections.length === 0) {
+        const sellerEntries = [...sellersMap.entries()];
+        if (sellerEntries.length > 0 && shippingCostTotal && shippingCostTotal > 0) {
+          const perSeller = Math.floor(shippingCostTotal / sellerEntries.length);
+          const remainder = shippingCostTotal - perSeller * sellerEntries.length;
+          sellerEntries.forEach(([, group], idx) => {
+            group.shippingCost = perSeller + (idx === 0 ? remainder : 0);
+            if (shippingMethod && !group.shippingMethod) {
+              group.shippingMethod = shippingMethod;
+            }
+          });
+        }
+      }
+
+      // Hitung subtotal produk dan total ongkir terpisah
+      const productSubtotal = totalGrossAmount; // sebelum ditambah ongkir
+      const totalShippingCost = [...sellersMap.values()].reduce((s, g) => s + g.shippingCost, 0);
+      totalGrossAmount += totalShippingCost;
+
+      // Validasi & hitung diskon voucher
+      let voucherDiscount = 0;
+      let voucherId: string | null = null;
+      if (voucherCode) {
+        try {
+          const v = await this.vouchersService.validateVoucher(voucherCode, userId, productSubtotal);
+          voucherDiscount = v.discount;
+          voucherId = v.voucher_id;
+        } catch {
+          throw new BadRequestException('Voucher tidak valid atau sudah tidak berlaku');
+        }
+      }
+
+      // Tambahkan service fee, asuransi, kurangi diskon voucher
+      totalGrossAmount = totalGrossAmount + SERVICE_FEE + INSURANCE_FEE - voucherDiscount;
+      if (totalGrossAmount < 0) totalGrossAmount = 0;
 
       const timestamp = new Date().getTime();
       const randomSuffix = randomBytes(4).toString('hex');
@@ -160,24 +325,39 @@ export class OrdersService {
       const invoiceBase = `INV/${new Date().toISOString().slice(0, 10).replace(/-/g, '')}/TRX`;
       const orderIdList: string[] = [];
 
+      let isFirstSeller = true;
       for (const [sellerId, group] of sellersMap.entries()) {
         const invoiceNumber = `${invoiceBase}/${sellerId.substring(0, 8).toUpperCase()}/${randomSuffix.toUpperCase()}`;
 
-        const platformFee = group.subtotal * 0.01;
-        const sellerEarning = group.subtotal - platformFee;
+        // Distribusi diskon voucher proporsional per seller
+        const sellerVoucherDiscount = productSubtotal > 0
+          ? Math.round(voucherDiscount * (group.subtotal / productSubtotal))
+          : 0;
+
+        // Extra fees (service fee + asuransi) hanya ke seller pertama
+        const extraFees = isFirstSeller ? SERVICE_FEE + INSURANCE_FEE : 0;
+        isFirstSeller = false;
+
+        const platformFee = group.subtotal * 0.01 + extraFees;
+        const sellerEarning = group.subtotal - group.subtotal * 0.01 + group.shippingCost - sellerVoucherDiscount;
+        const orderTotal = group.subtotal + group.shippingCost + extraFees - sellerVoucherDiscount;
 
         const orderRes = await client.query<{ id: string }>(
-          `INSERT INTO orders 
-            (user_id, seller_id, total_price, status, payment_status, invoice_number, created_at, updated_at, platform_fee, seller_earning)
-           VALUES ($1, $2, $3, 'pending', 'unpaid', $4, NOW(), NOW(), $5, $6)
+          `INSERT INTO orders
+            (user_id, seller_id, total_price, shipping_cost, discount_amount, status, payment_status,
+             invoice_number, created_at, updated_at, platform_fee, seller_earning, voucher_id)
+           VALUES ($1, $2, $3, $4, $5, 'pending', 'unpaid', $6, NOW(), NOW(), $7, $8, $9)
            RETURNING id`,
           [
             userId,
             sellerId,
-            group.subtotal,
+            orderTotal,
+            group.shippingCost,
+            sellerVoucherDiscount,
             invoiceNumber,
             platformFee,
             sellerEarning,
+            voucherId,
           ],
         );
         const orderId = orderRes.rows[0].id;
@@ -214,7 +394,7 @@ export class OrdersService {
         }
 
         await client.query(
-          `INSERT INTO payments 
+          `INSERT INTO payments
             (id, order_id, payment_method_id, midtrans_order_id, transaction_id,
              payment_status, payment_type, payment_code, va_number, bill_key,
              biller_code, qr_string, deeplink_url, payment_actions, fraud_status,
@@ -238,15 +418,30 @@ export class OrdersService {
             paymentInstructions.deeplink_url,
             JSON.stringify(paymentInstructions.actions ?? null),
             transaction.fraud_status ?? null,
-            group.subtotal,
+            orderTotal,
             JSON.stringify(transaction),
           ],
         );
 
         await client.query(
-          `INSERT INTO shipping (id, order_id, address, city, postal_code, status, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, 'pending', NOW(), NOW())`,
-          [orderId, address || 'TBD', city || 'TBD', postalCode || 'TBD'],
+          `INSERT INTO shipping
+            (id, order_id, address, city, postal_code, shipping_method, status, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'pending', NOW(), NOW())`,
+          [
+            orderId,
+            address || 'TBD',
+            city || 'TBD',
+            postalCode || 'TBD',
+            group.shippingMethod || null,
+          ],
+        );
+      }
+
+      // Increment voucher used_count jika ada
+      if (voucherId) {
+        await client.query(
+          `UPDATE vouchers SET used_count = used_count + 1 WHERE id = $1`,
+          [voucherId],
         );
       }
 
@@ -254,10 +449,7 @@ export class OrdersService {
         cartItemIds,
       ]);
       await client.query(
-        `
-        DELETE FROM carts 
-        WHERE user_id = $1 AND id NOT IN (SELECT cart_id FROM cart_items)
-      `,
+        `DELETE FROM carts WHERE user_id = $1 AND id NOT IN (SELECT cart_id FROM cart_items)`,
         [userId],
       );
 
@@ -274,6 +466,14 @@ export class OrdersService {
             transaction.payment_type ?? paymentInstructions.payment_type,
           instructions: paymentInstructions,
           expired_at: paymentInstructions.expired_at,
+          summary: {
+            subtotal: productSubtotal,
+            shipping_cost: totalShippingCost,
+            service_fee: SERVICE_FEE,
+            insurance_fee: INSURANCE_FEE,
+            voucher_discount: voucherDiscount,
+            total: totalGrossAmount,
+          },
         },
       };
     } catch (e: unknown) {

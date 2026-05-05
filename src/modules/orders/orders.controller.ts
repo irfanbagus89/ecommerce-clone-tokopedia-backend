@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -11,7 +12,7 @@ import {
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CurrentUser, Roles } from 'src/common';
 import { RolesGuard } from 'src/common/guards/roles.guard';
-import { CheckoutDto } from './dto/checkout.dto';
+import { CheckoutDto, CheckoutPreviewDto } from './dto/checkout.dto';
 import { ShipOrderDto } from './dto/ship-order.dto';
 import { OrdersService } from './orders.service';
 
@@ -20,6 +21,21 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   // ─── Buyer ─────────────────────────────────────────────────────────────────
+
+  @Post('checkout-preview')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  checkoutPreview(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: CheckoutPreviewDto,
+  ) {
+    return this.ordersService.checkoutPreview(
+      userId,
+      dto.cart_item_ids,
+      dto.shipping_cost,
+      dto.voucher_code,
+    );
+  }
 
   @Post('checkout')
   @UseGuards(JwtAuthGuard)
@@ -34,6 +50,10 @@ export class OrdersController {
       dto.address,
       dto.city,
       dto.postal_code,
+      dto.shipping_selections,
+      dto.shipping_cost,
+      dto.shipping_method,
+      dto.voucher_code,
     );
   }
 

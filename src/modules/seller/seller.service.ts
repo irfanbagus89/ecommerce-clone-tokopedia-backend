@@ -289,48 +289,86 @@ export class SellerService {
       store_name: string;
       store_description: string;
       verified: boolean;
-      user_id: string;
-    }>('SELECT * from "sellers" WHERE id = $1', [id]);
-    const existingStore = store.rows[0];
-    if (!existingStore) throw new NotFoundException('Toko tidak ditemukan');
-
-    return {
-      store: {
-        id: store.rows[0].id,
-        name: store.rows[0].store_name,
-        desc: store.rows[0].store_description,
-        verified: store.rows[0].verified,
-      },
-    };
-  }
-
-  async getProfile(user_id: string): Promise<{
-    id: string;
-    name: string;
-    desc: string;
-    verified: boolean;
-    seller_location: string;
-  }> {
-    const store = await this.db.query<{
-      id: string;
-      store_name: string;
-      store_description: string;
-      verified: boolean;
-      seller_location: string;
+      phone: string | null;
+      city_id: number | null;
+      city_name: string | null;
     }>(
-      `SELECT s.id, s.store_name, s.store_description, s.verified, s.seller_location
-       FROM "sellers" s WHERE user_id = $1`,
-      [user_id],
+      `SELECT s.id, s.store_name, s.store_description, s.verified,
+              s.phone, s.city_id, c.name AS city_name
+       FROM sellers s
+       LEFT JOIN cities c ON c.id = s.city_id
+       WHERE s.id = $1`,
+      [id],
     );
     const existingStore = store.rows[0];
     if (!existingStore) throw new NotFoundException('Toko tidak ditemukan');
 
     return {
-      id: existingStore.id,
-      name: existingStore.store_name,
-      desc: existingStore.store_description,
-      verified: existingStore.verified,
-      seller_location: existingStore.seller_location,
+      store: {
+        id: existingStore.id,
+        name: existingStore.store_name,
+        desc: existingStore.store_description,
+        verified: existingStore.verified,
+        phone: existingStore.phone,
+        city_id: existingStore.city_id,
+        city: existingStore.city_name,
+      },
+    };
+  }
+
+  async getProfile(user_id: string) {
+    const res = await this.db.query<{
+      id: string;
+      store_name: string;
+      store_description: string;
+      verified: boolean;
+      phone: string | null;
+      street: string | null;
+      postal_code: string | null;
+      province_id: number | null;
+      city_id: number | null;
+      kecamatan_id: number | null;
+      kelurahan_id: number | null;
+      province_name: string | null;
+      city_name: string | null;
+      kecamatan_name: string | null;
+      kelurahan_name: string | null;
+    }>(
+      `SELECT
+         s.id, s.store_name, s.store_description, s.verified,
+         s.phone, s.street, s.postal_code,
+         s.province_id, s.city_id, s.kecamatan_id, s.kelurahan_id,
+         p.name  AS province_name,
+         c.name  AS city_name,
+         k.name  AS kecamatan_name,
+         k2.name AS kelurahan_name
+       FROM sellers s
+       LEFT JOIN provinces  p  ON p.id  = s.province_id
+       LEFT JOIN cities     c  ON c.id  = s.city_id
+       LEFT JOIN kecamatan  k  ON k.id  = s.kecamatan_id
+       LEFT JOIN kelurahan  k2 ON k2.id = s.kelurahan_id
+       WHERE s.user_id = $1`,
+      [user_id],
+    );
+    const row = res.rows[0];
+    if (!row) throw new NotFoundException('Toko tidak ditemukan');
+
+    return {
+      id: row.id,
+      store_name: row.store_name,
+      store_description: row.store_description,
+      verified: row.verified,
+      phone: row.phone,
+      street: row.street,
+      postal_code: row.postal_code,
+      province_id: row.province_id,
+      city_id: row.city_id,
+      kecamatan_id: row.kecamatan_id,
+      kelurahan_id: row.kelurahan_id,
+      province: row.province_name,
+      city: row.city_name,
+      kecamatan: row.kecamatan_name,
+      kelurahan: row.kelurahan_name,
     };
   }
 
@@ -499,25 +537,33 @@ export class SellerService {
       setParts.push(`store_description = $${idx++}`);
       params.push(dto.store_description);
     }
-    if (dto.seller_location !== undefined) {
-      setParts.push(`seller_location = $${idx++}`);
-      params.push(dto.seller_location);
+    if (dto.phone !== undefined) {
+      setParts.push(`phone = $${idx++}`);
+      params.push(dto.phone);
     }
     if (dto.street !== undefined) {
       setParts.push(`street = $${idx++}`);
       params.push(dto.street);
     }
-    if (dto.kecamatan !== undefined) {
-      setParts.push(`kecamatan = $${idx++}`);
-      params.push(dto.kecamatan);
+    if (dto.postal_code !== undefined) {
+      setParts.push(`postal_code = $${idx++}`);
+      params.push(dto.postal_code);
     }
-    if (dto.kelurahan !== undefined) {
-      setParts.push(`kelurahan = $${idx++}`);
-      params.push(dto.kelurahan);
+    if (dto.province_id !== undefined) {
+      setParts.push(`province_id = $${idx++}`);
+      params.push(dto.province_id);
     }
-    if (dto.kode_pos !== undefined) {
-      setParts.push(`kode_pos = $${idx++}`);
-      params.push(dto.kode_pos);
+    if (dto.city_id !== undefined) {
+      setParts.push(`city_id = $${idx++}`);
+      params.push(dto.city_id);
+    }
+    if (dto.kecamatan_id !== undefined) {
+      setParts.push(`kecamatan_id = $${idx++}`);
+      params.push(dto.kecamatan_id);
+    }
+    if (dto.kelurahan_id !== undefined) {
+      setParts.push(`kelurahan_id = $${idx++}`);
+      params.push(dto.kelurahan_id);
     }
 
     if (setParts.length === 0)

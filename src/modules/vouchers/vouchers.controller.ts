@@ -20,6 +20,16 @@ import { ApplyVoucherDto, CreateVoucherDto } from './dto/voucher.dto';
 export class VouchersController {
   constructor(private readonly vouchersService: VouchersService) {}
 
+  @Get('available')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  getAvailableVouchers(
+    @CurrentUser('sub') userId: string,
+    @Query('subtotal') subtotal?: number,
+  ) {
+    return this.vouchersService.getAvailableVouchers(userId, subtotal ? Number(subtotal) : undefined);
+  }
+
   @Get('validate')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)

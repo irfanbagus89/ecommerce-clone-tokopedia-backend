@@ -81,6 +81,79 @@ export class VouchersService {
     };
   }
 
+  async getAvailableVouchers(userId: string, subtotal?: number) {
+    const now = new Date().toISOString();
+
+    const res = await this.db.query<{
+      id: string;
+      code: string;
+      type: string;
+      value: string;
+      min_purchase: string;
+      max_discount: string | null;
+      usage_limit: number | null;
+      used_count: number;
+      per_user_limit: number;
+      valid_until: string | null;
+    }>(
+      `SELECT id, code, type, value, min_purchase, max_discount,
+              usage_limit, used_count, per_user_limit, valid_until
+       FROM vouchers
+       WHERE is_active = true
+         AND seller_id IS NULL
+         AND (valid_from IS NULL OR valid_from <= $1)
+         AND (valid_until IS NULL OR valid_until >= $1)
+         AND (usage_limit IS NULL OR used_count < usage_limit)
+       ORDER BY created_at DESC`,
+      [now],
+    );
+
+    const results = await Promise.all(
+      res.rows.map(async (v) => {
+        // Cek user usage
+        const userUsage = await this.db.query<{ count: string }>(
+          `SELECT COUNT(*) AS count FROM orders
+           WHERE voucher_id = $1 AND user_id = $2 AND payment_status = 'paid'`,
+          [v.id, userId],
+        );
+        const userUsed = Number(userUsage.rows[0].count);
+        if (userUsed >= v.per_user_limit) return null;
+
+        const subtotalNum = subtotal ?? 0;
+        const minPurchase = Number(v.min_purchase);
+        const eligible = subtotalNum >= minPurchase;
+
+        // Estimasi diskon untuk tampilan
+        let estimatedDiscount = 0;
+        if (subtotalNum > 0) {
+          if (v.type === 'percentage') {
+            estimatedDiscount = (subtotalNum * Number(v.value)) / 100;
+            if (v.max_discount) {
+              estimatedDiscount = Math.min(estimatedDiscount, Number(v.max_discount));
+            }
+          } else {
+            estimatedDiscount = Number(v.value);
+          }
+          estimatedDiscount = Math.min(estimatedDiscount, subtotalNum);
+        }
+
+        return {
+          id: v.id,
+          code: v.code,
+          type: v.type,
+          value: Number(v.value),
+          min_purchase: Number(v.min_purchase),
+          max_discount: v.max_discount ? Number(v.max_discount) : null,
+          valid_until: v.valid_until,
+          estimated_discount: estimatedDiscount,
+          eligible,
+        };
+      }),
+    );
+
+    return results.filter(Boolean);
+  }
+
   async createVoucher(dto: CreateVoucherDto) {
     const d = dto as unknown as {
       code: string;

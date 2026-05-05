@@ -38,7 +38,7 @@ export class ProductsService {
       s.id AS seller_id,
       s.store_name,
       s.verified,
-      s.seller_location,
+      c_loc.name AS seller_location,
       st.name AS store_type,
       c.id AS category_id,
       c.name AS category_name,
@@ -46,6 +46,7 @@ export class ProductsService {
     FROM products p
     JOIN sellers s ON s.id = p.seller_id
     LEFT JOIN store_type st ON st.id = s.store_type_id
+    LEFT JOIN cities c_loc ON c_loc.id = s.city_id
     JOIN categories c ON c.id = p.category_id
     WHERE p.id = $1
     `,
@@ -179,12 +180,13 @@ export class ProductsService {
         p.original_price,
         p.image_url,
         p.category_id,
-        s.seller_location AS location,
+        c_loc.name AS location,
         COALESCE(AVG(r.rating), 0) AS rating,
         COALESCE(SUM(oi.quantity), 0) AS sold
       FROM products p
       JOIN sellers s ON s.id = p.seller_id
       JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN cities c_loc ON c_loc.id = s.city_id
       LEFT JOIN reviews r ON r.product_id = p.id
       LEFT JOIN order_items oi ON oi.product_id = p.id
       WHERE
@@ -208,7 +210,7 @@ export class ProductsService {
           $4::int[] IS NULL OR st.id = ANY($4::int[])
         )
         AND (
-          $5::text[] IS NULL OR s.seller_location = ANY($5::text[])
+          $5::text[] IS NULL OR c_loc.name = ANY($5::text[])
         )
         AND (
           $6::numeric IS NULL OR COALESCE(p.price, p.original_price) >= $6::numeric
@@ -216,7 +218,7 @@ export class ProductsService {
         AND (
           $7::numeric IS NULL OR COALESCE(p.price, p.original_price) <= $7::numeric
         )
-        GROUP BY p.id, s.seller_location
+        GROUP BY p.id, c_loc.name
         ORDER BY sold DESC, p.id DESC
         LIMIT $2 OFFSET $3
     `,
@@ -232,10 +234,11 @@ export class ProductsService {
     );
     const sellerLocation = await this.db.query<{ seller_location: string }>(
       `
-      SELECT DISTINCT s.seller_location
+      SELECT DISTINCT c_loc.name AS seller_location
       FROM products p
       JOIN sellers s ON s.id = p.seller_id
       JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN cities c_loc ON c_loc.id = s.city_id
       WHERE
         EXISTS (
           SELECT 1
@@ -262,7 +265,7 @@ export class ProductsService {
         AND (
           $4::numeric IS NULL OR COALESCE(p.price, p.original_price) <= $4::numeric
         )
-      ORDER BY s.seller_location ASC
+      ORDER BY c_loc.name ASC
     `,
       [
         searchValue,
@@ -277,6 +280,7 @@ export class ProductsService {
       FROM products p
       JOIN sellers s ON s.id = p.seller_id
       JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN cities c_loc ON c_loc.id = s.city_id
       WHERE
         EXISTS (
           SELECT 1
@@ -295,7 +299,7 @@ export class ProductsService {
           )
         )
         AND (
-          $2::text[] IS NULL OR s.seller_location = ANY($2::text[])
+          $2::text[] IS NULL OR c_loc.name = ANY($2::text[])
         )
         AND (
           $3::numeric IS NULL OR COALESCE(p.price, p.original_price) >= $3::numeric
@@ -318,6 +322,7 @@ export class ProductsService {
       FROM products p
       JOIN sellers s ON s.id = p.seller_id
       JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN cities c_loc ON c_loc.id = s.city_id
       WHERE
         EXISTS (
           SELECT 1
@@ -339,7 +344,7 @@ export class ProductsService {
           $2::int[] IS NULL OR st.id = ANY($2::int[])
         )
         AND (
-          $3::text[] IS NULL OR s.seller_location = ANY($3::text[])
+          $3::text[] IS NULL OR c_loc.name = ANY($3::text[])
         )
         AND (
           $4::numeric IS NULL OR COALESCE(p.price, p.original_price) >= $4::numeric
@@ -396,12 +401,13 @@ export class ProductsService {
         p.original_price,
         p.image_url,
         p.category_id,
-        s.seller_location AS location,
+        c_loc.name AS location,
         COALESCE(AVG(r.rating), 0) AS rating,
         COALESCE(SUM(oi.quantity), 0) AS sold
       FROM products p
       JOIN sellers s ON s.id = p.seller_id
       JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN cities c_loc ON c_loc.id = s.city_id
       LEFT JOIN reviews r ON r.product_id = p.id
       LEFT JOIN order_items oi ON oi.product_id = p.id
       WHERE
@@ -412,7 +418,7 @@ export class ProductsService {
           WHERE pv.product_id = p.id
             AND pv.stock > 0
         )
-      GROUP BY p.id, s.seller_location
+      GROUP BY p.id, c_loc.name
       ORDER BY sold DESC, p.id DESC
       LIMIT $1 OFFSET $2;
       `,
@@ -470,12 +476,13 @@ export class ProductsService {
         p.original_price,
         p.category_id,
         p.image_url,
-        s.seller_location AS location,
+        c_loc.name AS location,
         COALESCE(AVG(r.rating), 0) AS rating,
         COALESCE(SUM(oi.quantity), 0) AS sold
       FROM products p
       JOIN sellers s ON s.id = p.seller_id
       JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN cities c_loc ON c_loc.id = s.city_id
       LEFT JOIN reviews r ON r.product_id = p.id
       LEFT JOIN order_items oi ON oi.product_id = p.id
       WHERE
@@ -485,7 +492,7 @@ export class ProductsService {
           WHERE pv.product_id = p.id
             AND pv.stock > 0
         )
-      GROUP BY p.id, s.seller_location
+      GROUP BY p.id, c_loc.name
       ORDER BY sold DESC, p.id DESC
       LIMIT $1 OFFSET $2;
       `,
@@ -545,19 +552,20 @@ export class ProductsService {
         p.original_price,
         p.image_url,
         p.category_id,
-        s.seller_location AS location,
+        c_loc.name AS location,
         COALESCE(AVG(r.rating), 0) AS rating,
         COALESCE(SUM(oi.quantity), 0) AS sold
       FROM products p
       JOIN sellers s ON s.id = p.seller_id
       JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN cities c_loc ON c_loc.id = s.city_id
       LEFT JOIN reviews r ON r.product_id = p.id
       LEFT JOIN order_items oi ON oi.product_id = p.id
       WHERE
         p.seller_id = $1
         and p.category_id = $2
         and p.id <> $3
-      GROUP BY p.id, s.seller_location
+      GROUP BY p.id, c_loc.name
       ORDER BY sold DESC, p.id DESC
       LIMIT $4 OFFSET $5;
       `,
@@ -612,13 +620,14 @@ export class ProductsService {
         p.original_price,
         p.image_url,
         p.category_id,
-        s.seller_location AS location,
+        c_loc.name AS location,
         COALESCE(AVG(r.rating), 0) AS rating,
         COALESCE(SUM(oi.quantity), 0) AS sold
       FROM products p
       JOIN sellers s ON s.id = p.seller_id
-      join categories c on c.id = p.category_id 
+      join categories c on c.id = p.category_id
       JOIN store_type st ON st.id = s.store_type_id
+      LEFT JOIN cities c_loc ON c_loc.id = s.city_id
       LEFT JOIN reviews r ON r.product_id = p.id
       LEFT JOIN order_items oi ON oi.product_id = p.id
       WHERE
@@ -629,7 +638,7 @@ export class ProductsService {
           WHERE pv.product_id = p.id
             AND pv.stock > 0
         )
-     GROUP BY p.id, s.seller_location
+     GROUP BY p.id, c_loc.name
      ORDER BY sold DESC, p.id DESC
      LIMIT $2 OFFSET $3;
       `,
