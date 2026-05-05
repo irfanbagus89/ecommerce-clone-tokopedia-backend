@@ -2,6 +2,7 @@ export interface CartsResponse {
   sellers: {
     seller_id: string;
     seller_name: string;
+    city_id?: number | null;
     items: {
       cart_id: string;
       cart_item_id: string;

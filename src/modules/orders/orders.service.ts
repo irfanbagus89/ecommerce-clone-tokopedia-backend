@@ -92,7 +92,7 @@ export class OrdersService {
       `SELECT
          ci.id AS cart_item_id,
          ci.quantity,
-         COALESCE(p.price, p.original_price) AS base_price,
+         COALESCE(NULLIF(p.price, 0), p.original_price) AS base_price,
          COALESCE(pv.additional_price, 0) AS additional_price,
          p.original_price
        FROM cart_items ci
@@ -104,16 +104,19 @@ export class OrdersService {
     );
 
     if (result.rows.length !== cartItemIds.length) {
-      throw new BadRequestException('Some cart items are invalid or do not belong to you');
+      throw new BadRequestException(
+        'Some cart items are invalid or do not belong to you',
+      );
     }
-
     let originalPrice = 0;
     let subtotal = 0;
     let itemsCount = 0;
 
     for (const item of result.rows) {
-      const origUnit = Number(item.original_price) + Number(item.additional_price);
-      const discountedUnit = Number(item.base_price) + Number(item.additional_price);
+      const origUnit =
+        Number(item.original_price) + Number(item.additional_price);
+      const discountedUnit =
+        Number(item.base_price) + Number(item.additional_price);
       originalPrice += origUnit * Number(item.quantity);
       subtotal += discountedUnit * Number(item.quantity);
       itemsCount += Number(item.quantity);
@@ -123,11 +126,20 @@ export class OrdersService {
     const shippingCost = shippingCostTotal ?? 0;
 
     let voucherDiscount = 0;
-    let voucherInfo: { voucher_id: string; code: string; type: string; discount_amount: number } | null = null;
+    let voucherInfo: {
+      voucher_id: string;
+      code: string;
+      type: string;
+      discount_amount: number;
+    } | null = null;
 
     if (voucherCode) {
       try {
-        const v = await this.vouchersService.validateVoucher(voucherCode, userId, subtotal);
+        const v = await this.vouchersService.validateVoucher(
+          voucherCode,
+          userId,
+          subtotal,
+        );
         voucherDiscount = v.discount;
         voucherInfo = {
           voucher_id: v.voucher_id,
@@ -136,11 +148,16 @@ export class OrdersService {
           discount_amount: v.discount,
         };
       } catch {
-        throw new BadRequestException('Voucher tidak valid atau sudah tidak berlaku');
+        throw new BadRequestException(
+          'Voucher tidak valid atau sudah tidak berlaku',
+        );
       }
     }
 
-    const total = Math.max(0, subtotal - voucherDiscount + shippingCost + SERVICE_FEE + INSURANCE_FEE);
+    const total = Math.max(
+      0,
+      subtotal - voucherDiscount + shippingCost + SERVICE_FEE + INSURANCE_FEE,
+    );
 
     return {
       original_price: originalPrice,
@@ -211,7 +228,7 @@ export class OrdersService {
         SELECT
           ci.id AS cart_item_id, ci.quantity, ci.seller_id, ci.product_id, ci.variant_id,
           p.name AS product_name, pv.variant_name, pv.stock,
-          COALESCE(p.price, p.original_price) AS base_price,
+          COALESCE(NULLIF(p.price, 0), p.original_price) AS base_price,
           pv.additional_price
         FROM cart_items ci
         JOIN products p ON p.id = ci.product_id
@@ -275,9 +292,16 @@ export class OrdersService {
       // atau dari flat shippingCostTotal ke seller pertama jika tidak
       if (!shippingSelections || shippingSelections.length === 0) {
         const sellerEntries = [...sellersMap.entries()];
-        if (sellerEntries.length > 0 && shippingCostTotal && shippingCostTotal > 0) {
-          const perSeller = Math.floor(shippingCostTotal / sellerEntries.length);
-          const remainder = shippingCostTotal - perSeller * sellerEntries.length;
+        if (
+          sellerEntries.length > 0 &&
+          shippingCostTotal &&
+          shippingCostTotal > 0
+        ) {
+          const perSeller = Math.floor(
+            shippingCostTotal / sellerEntries.length,
+          );
+          const remainder =
+            shippingCostTotal - perSeller * sellerEntries.length;
           sellerEntries.forEach(([, group], idx) => {
             group.shippingCost = perSeller + (idx === 0 ? remainder : 0);
             if (shippingMethod && !group.shippingMethod) {
@@ -289,7 +313,10 @@ export class OrdersService {
 
       // Hitung subtotal produk dan total ongkir terpisah
       const productSubtotal = totalGrossAmount; // sebelum ditambah ongkir
-      const totalShippingCost = [...sellersMap.values()].reduce((s, g) => s + g.shippingCost, 0);
+      const totalShippingCost = [...sellersMap.values()].reduce(
+        (s, g) => s + g.shippingCost,
+        0,
+      );
       totalGrossAmount += totalShippingCost;
 
       // Validasi & hitung diskon voucher
@@ -297,16 +324,23 @@ export class OrdersService {
       let voucherId: string | null = null;
       if (voucherCode) {
         try {
-          const v = await this.vouchersService.validateVoucher(voucherCode, userId, productSubtotal);
+          const v = await this.vouchersService.validateVoucher(
+            voucherCode,
+            userId,
+            productSubtotal,
+          );
           voucherDiscount = v.discount;
           voucherId = v.voucher_id;
         } catch {
-          throw new BadRequestException('Voucher tidak valid atau sudah tidak berlaku');
+          throw new BadRequestException(
+            'Voucher tidak valid atau sudah tidak berlaku',
+          );
         }
       }
 
       // Tambahkan service fee, asuransi, kurangi diskon voucher
-      totalGrossAmount = totalGrossAmount + SERVICE_FEE + INSURANCE_FEE - voucherDiscount;
+      totalGrossAmount =
+        totalGrossAmount + SERVICE_FEE + INSURANCE_FEE - voucherDiscount;
       if (totalGrossAmount < 0) totalGrossAmount = 0;
 
       const timestamp = new Date().getTime();
@@ -330,17 +364,26 @@ export class OrdersService {
         const invoiceNumber = `${invoiceBase}/${sellerId.substring(0, 8).toUpperCase()}/${randomSuffix.toUpperCase()}`;
 
         // Distribusi diskon voucher proporsional per seller
-        const sellerVoucherDiscount = productSubtotal > 0
-          ? Math.round(voucherDiscount * (group.subtotal / productSubtotal))
-          : 0;
+        const sellerVoucherDiscount =
+          productSubtotal > 0
+            ? Math.round(voucherDiscount * (group.subtotal / productSubtotal))
+            : 0;
 
         // Extra fees (service fee + asuransi) hanya ke seller pertama
         const extraFees = isFirstSeller ? SERVICE_FEE + INSURANCE_FEE : 0;
         isFirstSeller = false;
 
         const platformFee = group.subtotal * 0.01 + extraFees;
-        const sellerEarning = group.subtotal - group.subtotal * 0.01 + group.shippingCost - sellerVoucherDiscount;
-        const orderTotal = group.subtotal + group.shippingCost + extraFees - sellerVoucherDiscount;
+        const sellerEarning =
+          group.subtotal -
+          group.subtotal * 0.01 +
+          group.shippingCost -
+          sellerVoucherDiscount;
+        const orderTotal =
+          group.subtotal +
+          group.shippingCost +
+          extraFees -
+          sellerVoucherDiscount;
 
         const orderRes = await client.query<{ id: string }>(
           `INSERT INTO orders

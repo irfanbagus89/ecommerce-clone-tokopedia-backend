@@ -1,125 +1,237 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Pool } from 'pg';
 import { ShippingCostDto } from './dto/shipping-cost.dto';
 
-type RajaOngkirStatus = { code: number; description: string };
+type Zone = 'lokal' | 'regional' | 'nasional';
 
-type RajaOngkirCostResult = {
-  code: string;
-  name: string;
-  costs: {
-    service: string;
-    description: string;
-    cost: { value: number; etd: string; note: string }[];
-  }[];
-};
+interface ServiceTier {
+  service: string;
+  description: string;
+  lokal: number;
+  regional: number;
+  nasional: number;
+  etd_lokal: string;
+  etd_regional: string;
+  etd_nasional: string;
+}
 
-type RajaOngkirProvinceItem = { province_id: string; province: string };
+interface CourierDef {
+  courier_code: string;
+  courier_name: string;
+  services: ServiceTier[];
+}
 
-type RajaOngkirCityItem = {
-  city_id: string;
-  province_id: string;
-  province: string;
-  type: string;
-  city_name: string;
-  postal_code: string;
-};
-
-type RajaOngkirResponse<T> = {
-  rajaongkir: { status: RajaOngkirStatus; results: T };
-};
-
-const COURIERS: { code: string; name: string; tiers: string[] }[] = [
+// Harga per kg per zona (dalam rupiah). ETD dalam hari kerja.
+const COURIERS: CourierDef[] = [
   {
-    code: 'jne',
-    name: 'Jalur Nugraha Ekakurir (JNE)',
-    tiers: ['starter', 'basic', 'pro'],
+    courier_code: 'jne',
+    courier_name: 'JNE',
+    services: [
+      {
+        service: 'OKE',
+        description: 'Ongkos Kirim Ekonomis',
+        lokal: 6_000,
+        regional: 7_000,
+        nasional: 9_000,
+        etd_lokal: '5-7',
+        etd_regional: '4-6',
+        etd_nasional: '7-14',
+      },
+      {
+        service: 'REG',
+        description: 'Reguler',
+        lokal: 8_000,
+        regional: 9_000,
+        nasional: 12_000,
+        etd_lokal: '2-3',
+        etd_regional: '3-5',
+        etd_nasional: '5-7',
+      },
+      {
+        service: 'YES',
+        description: 'Yakin Esok Sampai',
+        lokal: 18_000,
+        regional: 19_000,
+        nasional: 22_000,
+        etd_lokal: '1',
+        etd_regional: '1-2',
+        etd_nasional: '2-3',
+      },
+    ],
   },
-  { code: 'pos', name: 'POS Indonesia', tiers: ['basic', 'pro'] },
   {
-    code: 'tiki',
-    name: 'Citra Van Titipan Kilat (TIKI)',
-    tiers: ['basic', 'pro'],
+    courier_code: 'jnt',
+    courier_name: 'J&T Express',
+    services: [
+      {
+        service: 'REG',
+        description: 'Reguler',
+        lokal: 7_000,
+        regional: 8_000,
+        nasional: 11_000,
+        etd_lokal: '2-3',
+        etd_regional: '3-4',
+        etd_nasional: '4-7',
+      },
+      {
+        service: 'EZ',
+        description: 'Express',
+        lokal: 10_000,
+        regional: 12_000,
+        nasional: 15_000,
+        etd_lokal: '1-2',
+        etd_regional: '2-3',
+        etd_nasional: '3-5',
+      },
+    ],
   },
-  { code: 'rpx', name: 'RPX Holding', tiers: ['pro'] },
-  { code: 'jnt', name: 'J&T Express', tiers: ['pro'] },
-  { code: 'sicepat', name: 'SiCepat Ekspres', tiers: ['pro'] },
-  { code: 'anteraja', name: 'AnterAja', tiers: ['pro'] },
-  { code: 'wahana', name: 'Wahana Prestasi Logistik', tiers: ['pro'] },
-  { code: 'ninja', name: 'Ninja Xpress', tiers: ['pro'] },
-  { code: 'lion', name: 'Lion Parcel', tiers: ['pro'] },
-  { code: 'idl', name: 'IDL Cargo', tiers: ['pro'] },
+  {
+    courier_code: 'sicepat',
+    courier_name: 'SiCepat',
+    services: [
+      {
+        service: 'REG',
+        description: 'Reguler',
+        lokal: 7_000,
+        regional: 8_000,
+        nasional: 11_000,
+        etd_lokal: '2-3',
+        etd_regional: '3-4',
+        etd_nasional: '4-7',
+      },
+      {
+        service: 'BEST',
+        description: 'Best Express',
+        lokal: 12_000,
+        regional: 14_000,
+        nasional: 17_000,
+        etd_lokal: '1-2',
+        etd_regional: '2-3',
+        etd_nasional: '3-5',
+      },
+    ],
+  },
+  {
+    courier_code: 'pos',
+    courier_name: 'POS Indonesia',
+    services: [
+      {
+        service: 'KILAT',
+        description: 'Kilat Khusus',
+        lokal: 6_000,
+        regional: 7_000,
+        nasional: 9_000,
+        etd_lokal: '3-5',
+        etd_regional: '4-7',
+        etd_nasional: '7-14',
+      },
+    ],
+  },
+  {
+    courier_code: 'anteraja',
+    courier_name: 'AnterAja',
+    services: [
+      {
+        service: 'REG',
+        description: 'Reguler',
+        lokal: 7_000,
+        regional: 8_000,
+        nasional: 10_000,
+        etd_lokal: '2-3',
+        etd_regional: '3-5',
+        etd_nasional: '5-7',
+      },
+    ],
+  },
+  {
+    courier_code: 'sap',
+    courier_name: 'SAP Express',
+    services: [
+      {
+        service: 'REG',
+        description: 'Reguler',
+        lokal: 7_000,
+        regional: 9_000,
+        nasional: 12_000,
+        etd_lokal: '2-3',
+        etd_regional: '3-5',
+        etd_nasional: '5-8',
+      },
+    ],
+  },
 ];
 
 @Injectable()
 export class ShippingService {
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
-  private readonly tier: string;
+  constructor(@Inject('DATABASE_POOL') private readonly db: Pool) {}
 
-  constructor(private readonly config: ConfigService) {
-    this.apiKey = this.config.getOrThrow<string>('RAJAONGKIR_API_KEY');
-    this.tier = this.config.get<string>('RAJAONGKIR_TYPE') ?? 'starter';
+  // Lookup province_id dari city_id lewat DB lokal
+  private async getProvinceId(cityId: number): Promise<number | null> {
+    const res = await this.db.query<{ province_id: number }>(
+      'SELECT province_id FROM cities WHERE id = $1',
+      [cityId],
+    );
+    return res.rows[0]?.province_id ?? null;
+  }
 
-    const tierBaseUrl: Record<string, string> = {
-      starter: 'https://api.rajaongkir.com/starter',
-      basic: 'https://api.rajaongkir.com/basic',
-      pro: 'https://api.rajaongkir.com/pro',
-    };
-    this.baseUrl = tierBaseUrl[this.tier] ?? tierBaseUrl['starter'];
+  private determineZone(
+    originProvinceId: number | null,
+    destinationProvinceId: number | null,
+    originCityId: number,
+    destinationCityId: number,
+  ): Zone {
+    if (originCityId === destinationCityId) return 'lokal';
+    if (
+      originProvinceId !== null &&
+      destinationProvinceId !== null &&
+      originProvinceId === destinationProvinceId
+    )
+      return 'regional';
+    return 'nasional';
+  }
+
+  // cost = harga_per_kg * jumlah_kg (minimal 1 kg)
+  private calcCost(pricePerKg: number, weightGrams: number): number {
+    const kg = Math.max(1, Math.ceil(weightGrams / 1000));
+    return pricePerKg * kg;
   }
 
   async calculateCost(dto: ShippingCostDto) {
-    const body = new URLSearchParams({
-      origin: String(dto.origin_city_id),
-      destination: String(dto.destination_city_id),
-      weight: String(dto.weight),
-      courier: dto.courier.toLowerCase(),
-    }).toString();
+    const [originProvince, destProvince] = await Promise.all([
+      this.getProvinceId(dto.origin_city_id),
+      this.getProvinceId(dto.destination_city_id),
+    ]);
 
-    try {
-      const { data } = await axios.post<
-        RajaOngkirResponse<RajaOngkirCostResult[]>
-      >(`${this.baseUrl}/cost`, body, {
-        headers: {
-          key: this.apiKey,
-          'content-type': 'application/x-www-form-urlencoded',
-        },
-      });
+    const zone = this.determineZone(
+      originProvince,
+      destProvince,
+      dto.origin_city_id,
+      dto.destination_city_id,
+    );
 
-      const { status, results } = data.rajaongkir;
-      if (status.code !== 200) {
-        throw new BadRequestException(status.description);
-      }
+    const couriers = dto.courier
+      ? COURIERS.filter(
+          (c) => c.courier_code === dto.courier!.toLowerCase(),
+        )
+      : COURIERS;
 
-      return results.map((courier) => ({
-        courier_code: courier.code,
-        courier_name: courier.name,
-        services: courier.costs.map((s) => ({
-          service: s.service,
-          description: s.description,
-          cost: s.cost[0]?.value ?? 0,
-          etd: s.cost[0]?.etd ?? '-',
-          note: s.cost[0]?.note ?? '',
-        })),
-      }));
-    } catch (err: unknown) {
-      if (err instanceof BadRequestException) throw err;
-
-      const rajaongkirDesc = (
-        err as {
-          response?: {
-            data?: { rajaongkir?: { status?: { description?: string } } };
-          };
-        }
-      )?.response?.data?.rajaongkir?.status?.description;
-
+    if (dto.courier && couriers.length === 0) {
       throw new BadRequestException(
-        rajaongkirDesc ??
-          'Gagal menghitung ongkos kirim. Periksa API key atau parameter.',
+        `Kurir "${dto.courier}" tidak tersedia.`,
       );
     }
+
+    return couriers.map((courier) => ({
+      courier_code: courier.courier_code,
+      courier_name: courier.courier_name,
+      services: courier.services.map((svc) => ({
+        service: svc.service,
+        description: svc.description,
+        cost: this.calcCost(svc[zone], dto.weight),
+        etd: svc[`etd_${zone}`],
+        note: '',
+      })),
+    }));
   }
 
   async getServiceCost(params: {
@@ -134,12 +246,12 @@ export class ShippingService {
       destination_city_id: params.destination_city_id,
       weight: params.weight,
       courier: params.courier,
-    } as ShippingCostDto);
+    });
 
     const courierResult = results[0];
     if (!courierResult) {
       throw new BadRequestException(
-        `Kurir ${params.courier.toUpperCase()} tidak tersedia untuk rute ini`,
+        `Kurir ${params.courier.toUpperCase()} tidak tersedia.`,
       );
     }
 
@@ -148,7 +260,7 @@ export class ShippingService {
     );
     if (!serviceResult) {
       throw new BadRequestException(
-        `Layanan ${params.service.toUpperCase()} tidak tersedia untuk kurir ${params.courier.toUpperCase()}`,
+        `Layanan ${params.service.toUpperCase()} tidak tersedia untuk kurir ${params.courier.toUpperCase()}.`,
       );
     }
 
@@ -156,61 +268,6 @@ export class ShippingService {
   }
 
   getCouriers() {
-    return COURIERS.filter((c) => c.tiers.includes(this.tier)).map((c) => ({
-      code: c.code,
-      name: c.name,
-    }));
-  }
-
-  async getProvinces() {
-    try {
-      const { data } = await axios.get<
-        RajaOngkirResponse<RajaOngkirProvinceItem[]>
-      >(`${this.baseUrl}/province`, { headers: { key: this.apiKey } });
-
-      const { status, results } = data.rajaongkir;
-      if (status.code !== 200) {
-        throw new BadRequestException(status.description);
-      }
-
-      return results.map((p) => ({
-        id: Number(p.province_id),
-        name: p.province,
-      }));
-    } catch (err: unknown) {
-      if (err instanceof BadRequestException) throw err;
-      throw new BadRequestException('Gagal mengambil data provinsi.');
-    }
-  }
-
-  async getCities(provinceId?: number) {
-    const url = provinceId
-      ? `${this.baseUrl}/city?province=${provinceId}`
-      : `${this.baseUrl}/city`;
-
-    try {
-      const { data } = await axios.get<
-        RajaOngkirResponse<RajaOngkirCityItem[]>
-      >(url, {
-        headers: { key: this.apiKey },
-      });
-
-      const { status, results } = data.rajaongkir;
-      if (status.code !== 200) {
-        throw new BadRequestException(status.description);
-      }
-
-      return results.map((c) => ({
-        id: Number(c.city_id),
-        province_id: Number(c.province_id),
-        province: c.province,
-        type: c.type,
-        name: c.city_name,
-        postal_code: c.postal_code,
-      }));
-    } catch (err: unknown) {
-      if (err instanceof BadRequestException) throw err;
-      throw new BadRequestException('Gagal mengambil data kota/kabupaten.');
-    }
+    return COURIERS.map((c) => ({ code: c.courier_code, name: c.courier_name }));
   }
 }

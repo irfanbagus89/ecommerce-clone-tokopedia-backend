@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsNotEmpty, IsNumber, IsString, Min } from 'class-validator';
+import { IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class ShippingCostDto {
   @Type(() => Number)
@@ -18,6 +18,6 @@ export class ShippingCostDto {
   weight: number;
 
   @IsString()
-  @IsNotEmpty()
-  courier: string;
+  @IsOptional()
+  courier?: string;
 }

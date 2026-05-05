@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  Param,
-  ParseIntPipe,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { ShippingService } from './shipping.service';
 import { ShippingCostDto } from './dto/shipping-cost.dto';
 import { BasicAuthGuard } from 'src/common/guards/basic-auth.guard';
@@ -28,23 +19,5 @@ export class ShippingController {
   @UseGuards(BasicAuthGuard)
   getCouriers() {
     return this.shippingService.getCouriers();
-  }
-
-  @Get('province')
-  @UseGuards(BasicAuthGuard)
-  getProvinces() {
-    return this.shippingService.getProvinces();
-  }
-
-  @Get('city')
-  @UseGuards(BasicAuthGuard)
-  getAllCities() {
-    return this.shippingService.getCities();
-  }
-
-  @Get('city/:province_id')
-  @UseGuards(BasicAuthGuard)
-  getCitiesByProvince(@Param('province_id', ParseIntPipe) provinceId: number) {
-    return this.shippingService.getCities(provinceId);
   }
 }

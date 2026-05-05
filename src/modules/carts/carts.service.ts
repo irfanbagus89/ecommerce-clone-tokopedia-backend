@@ -267,6 +267,7 @@ export class CartsService {
       cart_item_id: string;
       seller_id: string;
       seller_name: string;
+      seller_city_id: number | null;
       product_id: string;
       product_name: string;
       price: number | null;
@@ -281,11 +282,12 @@ export class CartsService {
       is_checked: boolean;
     }>(
       `
-    SELECT 
+    SELECT
       ci.cart_id,
       ci.id AS cart_item_id,
       ci.seller_id,
       s.store_name AS seller_name,
+      s.city_id AS seller_city_id,
       p.id AS product_id,
       p.name AS product_name,
       p.price,
@@ -318,6 +320,7 @@ export class CartsService {
         seller = {
           seller_id: item.seller_id,
           seller_name: item.seller_name,
+          city_id: item.seller_city_id ? Number(item.seller_city_id) : null,
           items: [],
         };
         sellers.push(seller);
