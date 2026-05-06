@@ -5,6 +5,8 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { ShippingService } from '../shipping/shipping.service';
+import { VouchersService } from '../vouchers/vouchers.service';
 
 const mockDb = {
   query: jest.fn(),
@@ -14,6 +16,14 @@ const mockDb = {
 const mockClient = {
   query: jest.fn(),
   release: jest.fn(),
+};
+
+const mockShippingService = {
+  getServiceCost: jest.fn(),
+};
+
+const mockVouchersService = {
+  validateVoucher: jest.fn(),
 };
 
 describe('OrdersService', () => {
@@ -28,6 +38,8 @@ describe('OrdersService', () => {
       providers: [
         OrdersService,
         { provide: 'DATABASE_POOL', useValue: mockDb },
+        { provide: ShippingService, useValue: mockShippingService },
+        { provide: VouchersService, useValue: mockVouchersService },
       ],
     }).compile();
     service = module.get<OrdersService>(OrdersService);
@@ -110,6 +122,7 @@ describe('OrdersService', () => {
     it('should confirm order as received', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [{ status: 'shipped' }] });
       mockClient.query
+        .mockResolvedValueOnce({})
         .mockResolvedValueOnce({})
         .mockResolvedValueOnce({})
         .mockResolvedValueOnce({})

@@ -895,6 +895,10 @@ export class OrdersService {
         [orderId],
       );
       await client.query(
+        `UPDATE shipping SET status = 'delivered', updated_at = NOW() WHERE order_id = $1`,
+        [orderId],
+      );
+      await client.query(
         `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
          VALUES (gen_random_uuid(), $1, 'delivered', 'Buyer confirmed receipt', NOW())`,
         [orderId],

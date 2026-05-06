@@ -20,6 +20,9 @@ import { ChatModule } from './modules/chat/chat.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ShippingModule } from './modules/shipping/shipping.module';
 import { CloudinaryModule } from './common/cloudinary';
+import { DevModule } from './modules/dev/dev.module';
+
+const devModules = process.env.NODE_ENV !== 'production' ? [DevModule] : [];
 
 @Module({
   imports: [
@@ -42,6 +45,7 @@ import { CloudinaryModule } from './common/cloudinary';
     ChatModule,
     PaymentsModule,
     ShippingModule,
+    ...devModules,
   ],
   controllers: [AppController],
   providers: [AppService],
