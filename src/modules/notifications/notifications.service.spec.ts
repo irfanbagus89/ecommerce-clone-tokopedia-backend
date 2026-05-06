@@ -17,16 +17,14 @@ describe('NotificationsService', () => {
     }).compile();
     service = module.get<NotificationsService>(NotificationsService);
   });
-
-  // ─── getNotifications ─────────────────────────────────────────────────────
   describe('getNotifications', () => {
     it('should return paginated notifications', async () => {
       mockDb.query
         .mockResolvedValueOnce({
           rows: [{ id: 'n1', title: 'Test', is_read: false }],
-        }) // rows
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] }) // totalRes
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] }); // unreadRes
+        })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] });
       const result = await service.getNotifications('user1', 1, 10, false);
       expect(result).toHaveProperty('data');
       expect(result.total).toBe(1);
@@ -34,15 +32,13 @@ describe('NotificationsService', () => {
 
     it('should filter by unread when unreadOnly is true', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [] }) // rows
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // totalRes
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] }); // unreadRes
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
       const result = await service.getNotifications('user1', 1, 10, true);
       expect(result.data).toHaveLength(0);
     });
   });
-
-  // ─── markAsRead ────────────────────────────────────────────────────────────
   describe('markAsRead', () => {
     it('should throw NotFoundException if notification not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
@@ -57,8 +53,6 @@ describe('NotificationsService', () => {
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── markAllAsRead ─────────────────────────────────────────────────────────
   describe('markAllAsRead', () => {
     it('should mark all notifications as read', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [], rowCount: 5 });
@@ -66,8 +60,6 @@ describe('NotificationsService', () => {
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── deleteNotification ────────────────────────────────────────────────────
   describe('deleteNotification', () => {
     it('should throw NotFoundException if notification not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
@@ -82,8 +74,6 @@ describe('NotificationsService', () => {
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── getUnreadCount ────────────────────────────────────────────────────────
   describe('getUnreadCount', () => {
     it('should return unread count', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [{ count: '3' }] });
@@ -91,8 +81,6 @@ describe('NotificationsService', () => {
       expect(result).toHaveProperty('unread_count', 3);
     });
   });
-
-  // ─── sendNotification ─────────────────────────────────────────────────────
   describe('sendNotification', () => {
     it('should insert a notification without throwing', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });

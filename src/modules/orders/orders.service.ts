@@ -189,7 +189,6 @@ export class OrdersService {
       throw new BadRequestException('Cart items cannot be empty');
     }
 
-    // Hitung ongkir dari RajaOngkir di backend sebelum transaksi DB
     const resolvedShippingMap = new Map<
       string,
       { cost: number; method: string }
@@ -288,8 +287,6 @@ export class OrdersService {
         totalGrossAmount += itemTotal;
       }
 
-      // Distribusi ongkir: dari RajaOngkir jika ada shipping_selections,
-      // atau dari flat shippingCostTotal ke seller pertama jika tidak
       if (!shippingSelections || shippingSelections.length === 0) {
         const sellerEntries = [...sellersMap.entries()];
         if (
@@ -311,15 +308,13 @@ export class OrdersService {
         }
       }
 
-      // Hitung subtotal produk dan total ongkir terpisah
-      const productSubtotal = totalGrossAmount; // sebelum ditambah ongkir
+      const productSubtotal = totalGrossAmount;
       const totalShippingCost = [...sellersMap.values()].reduce(
         (s, g) => s + g.shippingCost,
         0,
       );
       totalGrossAmount += totalShippingCost;
 
-      // Validasi & hitung diskon voucher
       let voucherDiscount = 0;
       let voucherId: string | null = null;
       if (voucherCode) {
@@ -338,7 +333,6 @@ export class OrdersService {
         }
       }
 
-      // Tambahkan service fee, asuransi, kurangi diskon voucher
       totalGrossAmount =
         totalGrossAmount + SERVICE_FEE + INSURANCE_FEE - voucherDiscount;
       if (totalGrossAmount < 0) totalGrossAmount = 0;
@@ -363,13 +357,11 @@ export class OrdersService {
       for (const [sellerId, group] of sellersMap.entries()) {
         const invoiceNumber = `${invoiceBase}/${sellerId.substring(0, 8).toUpperCase()}/${randomSuffix.toUpperCase()}`;
 
-        // Distribusi diskon voucher proporsional per seller
         const sellerVoucherDiscount =
           productSubtotal > 0
             ? Math.round(voucherDiscount * (group.subtotal / productSubtotal))
             : 0;
 
-        // Extra fees (service fee + asuransi) hanya ke seller pertama
         const extraFees = isFirstSeller ? SERVICE_FEE + INSURANCE_FEE : 0;
         isFirstSeller = false;
 
@@ -480,7 +472,6 @@ export class OrdersService {
         );
       }
 
-      // Increment voucher used_count jika ada
       if (voucherId) {
         await client.query(
           `UPDATE vouchers SET used_count = used_count + 1 WHERE id = $1`,
@@ -935,7 +926,6 @@ export class OrdersService {
     try {
       await client.query('BEGIN');
 
-      // Restore stock
       const itemsRes = await client.query<{
         variant_id: string;
         quantity: number;
@@ -1164,7 +1154,6 @@ export class OrdersService {
   }
 
   async getOrderHistory(orderId: string, userId: string) {
-    // Allow both buyer and seller to view — verify ownership first
     const orderRes = await this.db.query<{
       user_id: string;
       seller_id: string;
@@ -1178,7 +1167,6 @@ export class OrdersService {
     const order = orderRes.rows[0];
     if (!order) throw new NotFoundException('Order not found');
 
-    // Accept row if columns match either buyer or seller
     const raw = orderRes.rows[0] as unknown as {
       user_id: string;
       seller_user_id: string;

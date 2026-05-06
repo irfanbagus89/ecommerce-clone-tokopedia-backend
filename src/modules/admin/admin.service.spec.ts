@@ -25,16 +25,13 @@ describe('AdminService', () => {
     }).compile();
     service = module.get<AdminService>(AdminService);
   });
-
-  // ─── getDashboard ─────────────────────────────────────────────────────────
   describe('getDashboard', () => {
     it('should return platform statistics', async () => {
-      // getDashboard uses Promise.all with 4 queries
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ count: '100' }] }) // users
-        .mockResolvedValueOnce({ rows: [{ count: '20' }] }) // sellers
-        .mockResolvedValueOnce({ rows: [{ count: '50' }] }) // orders
-        .mockResolvedValueOnce({ rows: [{ total: '5000000' }] }); // revenue
+        .mockResolvedValueOnce({ rows: [{ count: '100' }] })
+        .mockResolvedValueOnce({ rows: [{ count: '20' }] })
+        .mockResolvedValueOnce({ rows: [{ count: '50' }] })
+        .mockResolvedValueOnce({ rows: [{ total: '5000000' }] });
 
       const result = await service.getDashboard();
       expect(result).toHaveProperty('totalUsers', 100);
@@ -43,8 +40,6 @@ describe('AdminService', () => {
       expect(result).toHaveProperty('totalRevenue', 5000000);
     });
   });
-
-  // ─── getOrders ────────────────────────────────────────────────────────────
   describe('getOrders', () => {
     it('should return paginated orders', async () => {
       mockDb.query
@@ -64,8 +59,6 @@ describe('AdminService', () => {
       expect(result.data).toHaveLength(0);
     });
   });
-
-  // ─── getSellers ───────────────────────────────────────────────────────────
   describe('getSellers', () => {
     it('should return paginated sellers', async () => {
       mockDb.query
@@ -84,8 +77,6 @@ describe('AdminService', () => {
       expect(result.data).toHaveLength(1);
     });
   });
-
-  // ─── verifySeller ─────────────────────────────────────────────────────────
   describe('verifySeller', () => {
     it('should throw NotFoundException if seller not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -96,15 +87,12 @@ describe('AdminService', () => {
 
     it('should verify seller', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1' }] }) // exists
-        .mockResolvedValueOnce({ rows: [] }); // update
+        .mockResolvedValueOnce({ rows: [{ id: 's1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       const result = await service.verifySeller('s1');
       expect(result).toHaveProperty('message');
     });
-    // Note: verifySeller does not check if already verified – it always updates
   });
-
-  // ─── getWithdrawals ───────────────────────────────────────────────────────
   describe('getWithdrawals', () => {
     it('should return all pending withdrawals', async () => {
       mockDb.query
@@ -117,8 +105,6 @@ describe('AdminService', () => {
       expect(result.data[0].amount).toBe(100000);
     });
   });
-
-  // ─── processWithdrawal ────────────────────────────────────────────────────
   describe('processWithdrawal', () => {
     it('should throw NotFoundException if withdrawal not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -145,16 +131,14 @@ describe('AdminService', () => {
         ],
       });
       mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({}) // UPDATE withdrawal
-        .mockResolvedValueOnce({}) // UPDATE balance
-        .mockResolvedValueOnce({}); // COMMIT
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({});
       const result = await service.processWithdrawal('w1', 'approved');
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── getUsers ─────────────────────────────────────────────────────────────
   describe('getUsers', () => {
     it('should return paginated users', async () => {
       mockDb.query
@@ -166,8 +150,6 @@ describe('AdminService', () => {
       expect(result.data).toHaveLength(1);
     });
   });
-
-  // ─── refundOrder ──────────────────────────────────────────────────────────
   describe('refundOrder', () => {
     it('should throw NotFoundException if order not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -177,7 +159,6 @@ describe('AdminService', () => {
     });
 
     it('should throw BadRequestException if order status not refundable', async () => {
-      // status must be 'paid','delivered','completed' to be eligible
       mockDb.query.mockResolvedValueOnce({
         rows: [
           {
@@ -205,19 +186,17 @@ describe('AdminService', () => {
         ],
       });
       mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({}) // UPDATE order
-        .mockResolvedValueOnce({ rows: [{ variant_id: 'v1', quantity: 2 }] }) // items
-        .mockResolvedValueOnce({}) // UPDATE stock
-        .mockResolvedValueOnce({}) // UPDATE balance
-        .mockResolvedValueOnce({}) // INSERT history
-        .mockResolvedValueOnce({}); // COMMIT
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [{ variant_id: 'v1', quantity: 2 }] })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({});
       const result = await service.refundOrder('o1');
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── getSellerBalance ─────────────────────────────────────────────────────
   describe('getSellerBalance', () => {
     it('should throw NotFoundException if balance not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });

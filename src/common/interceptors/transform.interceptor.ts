@@ -27,8 +27,6 @@ export class TransformInterceptor<T> implements NestInterceptor<
     return next.handle().pipe(
       map((data: unknown) => {
         const statusCode = httpResponse.statusCode || 200;
-
-        // Jika sudah ResponseDto
         if (
           data &&
           typeof data === 'object' &&
@@ -37,8 +35,6 @@ export class TransformInterceptor<T> implements NestInterceptor<
         ) {
           return data as ResponseDto<T>;
         }
-
-        // Jika return { message, data }
         if (data && typeof data === 'object' && 'message' in data) {
           const custom = data as { message: string; data?: T };
 
@@ -50,8 +46,6 @@ export class TransformInterceptor<T> implements NestInterceptor<
             Data: custom.data ?? null,
           };
         }
-
-        // Default response
         return {
           Metadata: {
             code: statusCode,

@@ -72,7 +72,6 @@ export class ChatService {
     page: number,
     limit: number,
   ) {
-    // Cek akses
     const convRes = await this.db.query<{
       id: string;
       buyer_id: string;
@@ -101,8 +100,6 @@ export class ChatService {
        LIMIT $2 OFFSET $3`,
       [conversationId, limit, offset],
     );
-
-    // Mark as read
     await this.db.query(
       `UPDATE chat_messages SET is_read = true
        WHERE conversation_id = $1 AND sender_id != $2 AND is_read = false`,
@@ -132,8 +129,6 @@ export class ChatService {
       [sellerId],
     );
     if (!sellerRes.rows[0]) throw new NotFoundException('Seller not found');
-
-    // Cek existing
     const existRes = await this.db.query<{ id: string }>(
       `SELECT id FROM chat_conversations
        WHERE buyer_id = $1 AND seller_id = $2`,
@@ -159,7 +154,6 @@ export class ChatService {
     message?: string,
     imageFile?: Express.Multer.File,
   ) {
-    // Validasi akses
     const convRes = await this.db.query<{
       id: string;
       buyer_id: string;

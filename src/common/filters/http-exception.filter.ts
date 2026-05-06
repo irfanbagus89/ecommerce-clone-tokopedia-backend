@@ -40,8 +40,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
           (typeof responseObj.message === 'string'
             ? responseObj.message
             : responseObj.error) || 'An error occurred';
-
-        // Handle validation errors array
         if (Array.isArray(responseObj.message)) {
           message = responseObj.message.join(', ');
         }
@@ -49,8 +47,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (exception instanceof Error) {
       message = exception.message;
     }
-
-    // Log error
     this.logger.error(
       `${request.method} ${request.url} - ${status} - ${message}`,
       exception instanceof Error ? exception.stack : '',

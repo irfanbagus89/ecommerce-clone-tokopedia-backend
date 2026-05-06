@@ -60,8 +60,6 @@ export class ReviewsController {
   ) {
     return this.reviewsService.markHelpful(reviewId, userId);
   }
-
-  // ─── Existing: Get reviews by product ────────────────────────────────────
   @Get(':id')
   @HttpCode(200)
   @UseGuards(BasicAuthGuard)

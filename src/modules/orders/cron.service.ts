@@ -15,7 +15,6 @@ export class CronService {
     try {
       await client.query('BEGIN');
 
-      // Ambil order pending yang sudah > 24 jam
       const expiredRes = await client.query<{ id: string }>(
         `SELECT o.id FROM orders o
          WHERE o.status = 'pending'
@@ -25,7 +24,6 @@ export class CronService {
       const orderIds = expiredRes.rows.map((r) => r.id);
 
       for (const orderId of orderIds) {
-        // Restore stok
         const itemsRes = await client.query<{
           variant_id: string;
           quantity: number;
@@ -39,7 +37,6 @@ export class CronService {
           );
         }
 
-        // Update status order & payment
         await client.query(
           `UPDATE orders
            SET status = 'cancelled', payment_status = 'expired', updated_at = NOW()
@@ -47,14 +44,12 @@ export class CronService {
           [orderId],
         );
 
-        // Update payments
         await client.query(
           `UPDATE payments SET payment_status = 'expired', updated_at = NOW()
            WHERE order_id = $1 AND payment_status = 'pending'`,
           [orderId],
         );
 
-        // Catat histori
         await client.query(
           `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
            VALUES (gen_random_uuid(), $1, 'cancelled', 'Auto-cancelled: payment expired after 24 hours', NOW())`,
@@ -94,20 +89,17 @@ export class CronService {
       const orders = deliveredRes.rows;
 
       for (const order of orders) {
-        // Update status ke completed
         await client.query(
           `UPDATE orders SET status = 'completed', updated_at = NOW() WHERE id = $1`,
           [order.id],
         );
 
-        // Catat histori
         await client.query(
           `INSERT INTO order_status_histories (id, order_id, status, note, created_at)
            VALUES (gen_random_uuid(), $1, 'completed', 'Auto-completed: 7 days after delivery', NOW())`,
           [order.id],
         );
 
-        // Kredit saldo seller jika ada seller_earning
         if (order.seller_earning) {
           await client.query(
             `INSERT INTO seller_balances (seller_id, total_earned, available_balance, updated_at)

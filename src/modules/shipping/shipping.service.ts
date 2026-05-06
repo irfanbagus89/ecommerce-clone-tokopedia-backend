@@ -21,7 +21,6 @@ interface CourierDef {
   services: ServiceTier[];
 }
 
-// Harga per kg per zona (dalam rupiah). ETD dalam hari kerja.
 const COURIERS: CourierDef[] = [
   {
     courier_code: 'jne',
@@ -165,7 +164,6 @@ const COURIERS: CourierDef[] = [
 export class ShippingService {
   constructor(@Inject('DATABASE_POOL') private readonly db: Pool) {}
 
-  // Lookup province_id dari city_id lewat DB lokal
   private async getProvinceId(cityId: number): Promise<number | null> {
     const res = await this.db.query<{ province_id: number }>(
       'SELECT province_id FROM cities WHERE id = $1',
@@ -190,7 +188,6 @@ export class ShippingService {
     return 'nasional';
   }
 
-  // cost = harga_per_kg * jumlah_kg (minimal 1 kg)
   private calcCost(pricePerKg: number, weightGrams: number): number {
     const kg = Math.max(1, Math.ceil(weightGrams / 1000));
     return pricePerKg * kg;
@@ -210,15 +207,11 @@ export class ShippingService {
     );
 
     const couriers = dto.courier
-      ? COURIERS.filter(
-          (c) => c.courier_code === dto.courier!.toLowerCase(),
-        )
+      ? COURIERS.filter((c) => c.courier_code === dto.courier!.toLowerCase())
       : COURIERS;
 
     if (dto.courier && couriers.length === 0) {
-      throw new BadRequestException(
-        `Kurir "${dto.courier}" tidak tersedia.`,
-      );
+      throw new BadRequestException(`Kurir "${dto.courier}" tidak tersedia.`);
     }
 
     return couriers.map((courier) => ({
@@ -268,6 +261,9 @@ export class ShippingService {
   }
 
   getCouriers() {
-    return COURIERS.map((c) => ({ code: c.courier_code, name: c.courier_name }));
+    return COURIERS.map((c) => ({
+      code: c.courier_code,
+      name: c.courier_name,
+    }));
   }
 }

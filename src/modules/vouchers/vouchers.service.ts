@@ -47,8 +47,6 @@ export class VouchersService {
     ) {
       throw new BadRequestException('Voucher usage limit reached');
     }
-
-    // Cek per-user limit
     const userUsageRes = await this.db.query<{ count: string }>(
       `SELECT COUNT(*) AS count FROM orders
        WHERE voucher_id = $1 AND user_id = $2 AND payment_status = 'paid'`,
@@ -59,8 +57,6 @@ export class VouchersService {
         'You have already used this voucher the maximum number of times',
       );
     }
-
-    // Hitung diskon
     let discount = 0;
     if (voucher.type === 'percentage') {
       discount = (totalAmount * Number(voucher.value)) / 100;
@@ -110,7 +106,6 @@ export class VouchersService {
 
     const results = await Promise.all(
       res.rows.map(async (v) => {
-        // Cek user usage
         const userUsage = await this.db.query<{ count: string }>(
           `SELECT COUNT(*) AS count FROM orders
            WHERE voucher_id = $1 AND user_id = $2 AND payment_status = 'paid'`,
@@ -122,8 +117,6 @@ export class VouchersService {
         const subtotalNum = subtotal ?? 0;
         const minPurchase = Number(v.min_purchase);
         const eligible = subtotalNum >= minPurchase;
-
-        // Estimasi diskon untuk tampilan
         let estimatedDiscount = 0;
         if (subtotalNum > 0) {
           if (v.type === 'percentage') {
@@ -179,8 +172,6 @@ export class VouchersService {
       valid_from,
       valid_until,
     } = d;
-
-    // Cek kode unik
     const existing = await this.db.query<{ id: string }>(
       `SELECT id FROM vouchers WHERE code = $1`,
       [code],

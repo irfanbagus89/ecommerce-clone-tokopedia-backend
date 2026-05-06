@@ -188,7 +188,6 @@ export class ReviewsService {
     variantId?: string,
     comment?: string,
   ) {
-    // Validasi: order harus 'completed' dan milik user ini
     const orderRes = await this.db.query<{ status: string; seller_id: string }>(
       `SELECT status FROM orders WHERE id = $1 AND user_id = $2`,
       [orderId, userId],
@@ -200,8 +199,6 @@ export class ReviewsService {
         'Reviews can only be submitted for completed orders',
       );
     }
-
-    // Validasi: produk harus ada di order
     const itemRes = await this.db.query<{ id: string }>(
       `SELECT id FROM order_items WHERE order_id = $1 AND product_id = $2`,
       [orderId, productId],
@@ -209,8 +206,6 @@ export class ReviewsService {
     if (!itemRes.rows[0]) {
       throw new BadRequestException('Product not found in this order');
     }
-
-    // Validasi: belum pernah review produk ini dari order yang sama
     const existingRes = await this.db.query<{ id: string }>(
       `SELECT r.id FROM reviews r
        JOIN order_items oi ON oi.product_id = r.product_id
@@ -241,7 +236,6 @@ export class ReviewsService {
     userId: string,
     files: Express.Multer.File[],
   ) {
-    // Verifikasi review milik user
     const reviewRes = await this.db.query<{ id: string; user_id: string }>(
       `SELECT id, user_id FROM reviews WHERE id = $1`,
       [reviewId],
@@ -250,8 +244,6 @@ export class ReviewsService {
     if (!review) throw new NotFoundException('Review not found');
     if (review.user_id !== userId)
       throw new ForbiddenException('Access denied');
-
-    // Cek total gambar (maks 5)
     const countRes = await this.db.query<{ count: string }>(
       `SELECT COUNT(*) as count FROM review_images WHERE review_id = $1`,
       [reviewId],
@@ -304,8 +296,6 @@ export class ReviewsService {
       [reviewId],
     );
     if (!reviewRes.rows[0]) throw new NotFoundException('Review not found');
-
-    // Cek duplikasi
     const voteRes = await this.db.query<{ id: string }>(
       `SELECT id FROM review_helpful_votes WHERE review_id = $1 AND user_id = $2`,
       [reviewId, userId],

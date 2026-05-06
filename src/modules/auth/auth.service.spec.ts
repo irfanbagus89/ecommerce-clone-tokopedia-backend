@@ -32,8 +32,6 @@ describe('AuthService', () => {
 
     service = module.get<AuthService>(AuthService);
   });
-
-  // ─── register ─────────────────────────────────────────────────────────────
   describe('register', () => {
     it('should throw ConflictException if email already exists', async () => {
       mockDb.query.mockResolvedValueOnce({
@@ -49,7 +47,7 @@ describe('AuthService', () => {
     });
 
     it('should throw BadRequestException if password too short', async () => {
-      mockDb.query.mockResolvedValueOnce({ rows: [] }); // email not found
+      mockDb.query.mockResolvedValueOnce({ rows: [] });
       await expect(
         service.register({ name: 'A', email: 'a@b.com', password: '123' }),
       ).rejects.toThrow(BadRequestException);
@@ -57,10 +55,10 @@ describe('AuthService', () => {
 
     it('should return registered user data on success', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [] }) // email check
+        .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({
           rows: [{ id: 'u1', email: 'a@b.com', name: 'A', role: 'user' }],
-        }); // insert
+        });
 
       const result = await service.register({
         name: 'A',
@@ -71,8 +69,6 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('role', 'user');
     });
   });
-
-  // ─── login ────────────────────────────────────────────────────────────────
   describe('login', () => {
     it('should throw UnauthorizedException if user not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -81,8 +77,6 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
   });
-
-  // ─── profile ──────────────────────────────────────────────────────────────
   describe('profile', () => {
     it('should return user profile', async () => {
       mockDb.query.mockResolvedValueOnce({
@@ -101,8 +95,6 @@ describe('AuthService', () => {
       );
     });
   });
-
-  // ─── changePassword ───────────────────────────────────────────────────────
   describe('changePassword', () => {
     it('should throw NotFoundException if user not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -111,8 +103,6 @@ describe('AuthService', () => {
       ).rejects.toThrow(NotFoundException);
     });
   });
-
-  // ─── updateProfile ────────────────────────────────────────────────────────
   describe('updateProfile', () => {
     it('should throw NotFoundException if user not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -122,7 +112,7 @@ describe('AuthService', () => {
     });
 
     it('should throw BadRequestException if no fields provided', async () => {
-      mockDb.query.mockResolvedValueOnce({ rows: [{ id: 'u1' }] }); // user found
+      mockDb.query.mockResolvedValueOnce({ rows: [{ id: 'u1' }] });
       await expect(
         service.updateProfile('u1', undefined, undefined),
       ).rejects.toThrow(BadRequestException);
@@ -130,8 +120,8 @@ describe('AuthService', () => {
 
     it('should update name successfully', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 'u1' }] }) // user found
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }); // update
+        .mockResolvedValueOnce({ rows: [{ id: 'u1' }] })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
       const result = await service.updateProfile('u1', 'New Name', undefined);
       expect(result).toHaveProperty('message');
     });

@@ -28,8 +28,6 @@ describe('AddressesService', () => {
     }).compile();
     service = module.get<AddressesService>(AddressesService);
   });
-
-  // ─── getAddresses ─────────────────────────────────────────────────────────
   describe('getAddresses', () => {
     it('should return list of addresses', async () => {
       mockDb.query.mockResolvedValueOnce({
@@ -39,15 +37,12 @@ describe('AddressesService', () => {
       expect(result).toHaveLength(1);
     });
   });
-
-  // ─── createAddress ────────────────────────────────────────────────────────
   describe('createAddress', () => {
     it('should create address successfully', async () => {
-      // is_default=false: BEGIN → INSERT RETURNING id → COMMIT
       mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ id: 'a1' }] }) // INSERT RETURNING id
-        .mockResolvedValueOnce({}); // COMMIT
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [{ id: 'a1' }] })
+        .mockResolvedValueOnce({});
 
       const result = await service.createAddress('user1', {
         recipient_name: 'Ali',
@@ -59,10 +54,10 @@ describe('AddressesService', () => {
 
     it('should create address with is_default=true and unset others', async () => {
       mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({}) // UPDATE unset is_default
-        .mockResolvedValueOnce({ rows: [{ id: 'a2' }] }) // INSERT
-        .mockResolvedValueOnce({}); // COMMIT
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [{ id: 'a2' }] })
+        .mockResolvedValueOnce({});
 
       const result = await service.createAddress('user1', {
         recipient_name: 'Bob',
@@ -72,8 +67,6 @@ describe('AddressesService', () => {
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── updateAddress ────────────────────────────────────────────────────────
   describe('updateAddress', () => {
     it('should throw NotFoundException if address not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -83,15 +76,13 @@ describe('AddressesService', () => {
     });
 
     it('should throw BadRequestException if no fields to update', async () => {
-      mockDb.query.mockResolvedValueOnce({ rows: [{ id: 'a1' }] }); // address found
-      mockClient.query.mockResolvedValueOnce({}); // BEGIN
+      mockDb.query.mockResolvedValueOnce({ rows: [{ id: 'a1' }] });
+      mockClient.query.mockResolvedValueOnce({});
       await expect(service.updateAddress('a1', 'user1', {})).rejects.toThrow(
         BadRequestException,
       );
     });
   });
-
-  // ─── deleteAddress ────────────────────────────────────────────────────────
   describe('deleteAddress', () => {
     it('should throw NotFoundException if address not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
@@ -106,8 +97,6 @@ describe('AddressesService', () => {
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── setDefaultAddress ────────────────────────────────────────────────────
   describe('setDefaultAddress', () => {
     it('should throw NotFoundException if address not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -117,18 +106,16 @@ describe('AddressesService', () => {
     });
 
     it('should set address as default', async () => {
-      mockDb.query.mockResolvedValueOnce({ rows: [{ id: 'a1' }] }); // find address
+      mockDb.query.mockResolvedValueOnce({ rows: [{ id: 'a1' }] });
       mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({}) // unset old default
-        .mockResolvedValueOnce({}) // set new default
-        .mockResolvedValueOnce({}); // COMMIT
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({});
       const result = await service.setDefaultAddress('a1', 'user1');
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── getDefaultAddress ────────────────────────────────────────────────────
   describe('getDefaultAddress', () => {
     it('should throw NotFoundException if no default address', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });

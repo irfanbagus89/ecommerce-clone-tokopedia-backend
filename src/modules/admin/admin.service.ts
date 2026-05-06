@@ -314,8 +314,6 @@ export class AdminService {
          WHERE id = $1`,
         [orderId],
       );
-
-      // Restore stok
       const itemsRes = await client.query<{
         variant_id: string;
         quantity: number;
@@ -328,8 +326,6 @@ export class AdminService {
           [item.quantity, item.variant_id],
         );
       }
-
-      // Reverse seller balance jika ada
       if (order.seller_earning) {
         await client.query(
           `UPDATE seller_balances

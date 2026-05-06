@@ -3,8 +3,6 @@ import { VouchersService } from './vouchers.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 const mockDb = { query: jest.fn() };
-
-// Helper: build a voucher row with defaults
 const makeVoucher = (overrides: Record<string, unknown> = {}) => ({
   id: 'v1',
   code: 'PROMO10',
@@ -34,11 +32,8 @@ describe('VouchersService', () => {
     }).compile();
     service = module.get<VouchersService>(VouchersService);
   });
-
-  // ─── validateVoucher ──────────────────────────────────────────────────────
   describe('validateVoucher', () => {
     it('should throw NotFoundException if voucher not found', async () => {
-      // query filters is_active=true, so empty result = not found or inactive
       mockDb.query.mockResolvedValueOnce({ rows: [] });
       await expect(
         service.validateVoucher('INVALID', 'user1', 100000),
@@ -59,7 +54,7 @@ describe('VouchersService', () => {
     it('should throw BadRequestException if per-user limit exceeded', async () => {
       mockDb.query
         .mockResolvedValueOnce({ rows: [makeVoucher({ per_user_limit: 1 })] })
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] }); // user used 1 time already
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] });
       await expect(
         service.validateVoucher('PROMO10', 'user1', 100000),
       ).rejects.toThrow(BadRequestException);
@@ -67,8 +62,8 @@ describe('VouchersService', () => {
 
     it('should return discount for valid percentage voucher', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [makeVoucher()] }) // voucher found
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] }); // per-user check
+        .mockResolvedValueOnce({ rows: [makeVoucher()] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
       const result = await service.validateVoucher('PROMO10', 'user1', 200000);
       expect(result).toHaveProperty('discount');
       expect(result.discount).toBeLessThanOrEqual(50000);
@@ -91,7 +86,7 @@ describe('VouchersService', () => {
     });
 
     it('should throw BadRequestException if voucher is not yet valid', async () => {
-      const future = new Date(Date.now() + 86400000).toISOString(); // tomorrow
+      const future = new Date(Date.now() + 86400000).toISOString();
       mockDb.query
         .mockResolvedValueOnce({ rows: [makeVoucher({ valid_from: future })] })
         .mockResolvedValueOnce({ rows: [{ count: '0' }] });
@@ -101,7 +96,7 @@ describe('VouchersService', () => {
     });
 
     it('should throw BadRequestException if voucher has expired', async () => {
-      const past = new Date(Date.now() - 86400000).toISOString(); // yesterday
+      const past = new Date(Date.now() - 86400000).toISOString();
       mockDb.query
         .mockResolvedValueOnce({ rows: [makeVoucher({ valid_until: past })] })
         .mockResolvedValueOnce({ rows: [{ count: '0' }] });
@@ -121,11 +116,9 @@ describe('VouchersService', () => {
       ).rejects.toThrow(BadRequestException);
     });
   });
-
-  // ─── createVoucher ────────────────────────────────────────────────────────
   describe('createVoucher', () => {
     it('should throw BadRequestException if code already exists', async () => {
-      mockDb.query.mockResolvedValueOnce({ rows: [{ id: 'v1' }] }); // code exists
+      mockDb.query.mockResolvedValueOnce({ rows: [{ id: 'v1' }] });
       await expect(
         service.createVoucher({
           code: 'EXISTING',
@@ -137,8 +130,8 @@ describe('VouchersService', () => {
 
     it('should create voucher successfully', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [] }) // code NOT found (unique)
-        .mockResolvedValueOnce({ rows: [{ id: 'v2' }] }); // insert
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'v2' }] });
       const result = await service.createVoucher({
         code: 'NEWVOUCHER',
         type: 'nominal',
@@ -147,8 +140,6 @@ describe('VouchersService', () => {
       expect(result).toHaveProperty('voucher_id', 'v2');
     });
   });
-
-  // ─── getVouchers ──────────────────────────────────────────────────────────
   describe('getVouchers', () => {
     it('should return paginated vouchers', async () => {
       mockDb.query
@@ -169,8 +160,6 @@ describe('VouchersService', () => {
       expect(result.data).toHaveLength(0);
     });
   });
-
-  // ─── toggleVoucher ────────────────────────────────────────────────────────
   describe('toggleVoucher', () => {
     it('should throw NotFoundException if voucher not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -181,16 +170,16 @@ describe('VouchersService', () => {
 
     it('should deactivate voucher', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 'v1' }] }) // exists
-        .mockResolvedValueOnce({ rows: [] }); // UPDATE
+        .mockResolvedValueOnce({ rows: [{ id: 'v1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       const result = await service.toggleVoucher('v1', false);
       expect(result).toHaveProperty('message');
     });
 
     it('should activate voucher', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 'v1' }] }) // exists
-        .mockResolvedValueOnce({ rows: [] }); // UPDATE
+        .mockResolvedValueOnce({ rows: [{ id: 'v1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       const result = await service.toggleVoucher('v1', true);
       expect(result.message).toContain('activated');
     });

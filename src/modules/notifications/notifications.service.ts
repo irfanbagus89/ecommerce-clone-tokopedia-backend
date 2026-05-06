@@ -79,8 +79,6 @@ export class NotificationsService {
     );
     return { unread_count: Number(res.rows[0].count) };
   }
-
-  // Helper: kirim notifikasi (dipanggil oleh service lain)
   async sendNotification(
     userId: string,
     type: string,

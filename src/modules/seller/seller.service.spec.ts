@@ -28,8 +28,6 @@ describe('SellerService', () => {
     }).compile();
     service = module.get<SellerService>(SellerService);
   });
-
-  // ─── deleteProduct ────────────────────────────────────────────────────────
   describe('deleteProduct', () => {
     it('should throw NotFoundException if seller not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -40,8 +38,8 @@ describe('SellerService', () => {
 
     it('should throw NotFoundException if product not found or does not belong to seller', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1' }] }) // seller
-        .mockResolvedValueOnce({ rows: [] }); // product not found
+        .mockResolvedValueOnce({ rows: [{ id: 's1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       await expect(service.deleteProduct('p1', 'user1')).rejects.toThrow(
         NotFoundException,
       );
@@ -49,15 +47,13 @@ describe('SellerService', () => {
 
     it('should soft delete product', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1' }] }) // seller
-        .mockResolvedValueOnce({ rows: [{ id: 'p1' }] }) // product
-        .mockResolvedValueOnce({ rows: [] }); // update active = false
+        .mockResolvedValueOnce({ rows: [{ id: 's1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'p1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       const result = await service.deleteProduct('p1', 'user1');
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── updateStock ──────────────────────────────────────────────────────────
   describe('updateStock', () => {
     it('should throw NotFoundException if seller not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -68,8 +64,8 @@ describe('SellerService', () => {
 
     it('should throw NotFoundException if product not found', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1' }] }) // seller
-        .mockResolvedValueOnce({ rows: [] }); // product
+        .mockResolvedValueOnce({ rows: [{ id: 's1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       await expect(
         service.updateStock('p1', 'user1', { variants: [] }),
       ).rejects.toThrow(NotFoundException);
@@ -77,17 +73,15 @@ describe('SellerService', () => {
 
     it('should update stock for variants', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1' }] }) // seller
-        .mockResolvedValueOnce({ rows: [{ id: 'p1' }] }) // product
-        .mockResolvedValueOnce({ rows: [] }); // update variant stock
+        .mockResolvedValueOnce({ rows: [{ id: 's1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'p1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       const result = await service.updateStock('p1', 'user1', {
         variants: [{ variant_id: 'v1', stock: 10 }],
       });
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── updateSellerProfile ──────────────────────────────────────────────────
   describe('updateSellerProfile', () => {
     it('should throw NotFoundException if seller not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -105,16 +99,14 @@ describe('SellerService', () => {
 
     it('should update seller profile', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1' }] }) // seller
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }); // update
+        .mockResolvedValueOnce({ rows: [{ id: 's1' }] })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
       const result = await service.updateSellerProfile('user1', {
         store_name: 'New Store',
       });
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── updateProduct ────────────────────────────────────────────────────────
   describe('updateProduct', () => {
     it('should throw NotFoundException if seller not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -126,8 +118,8 @@ describe('SellerService', () => {
 
     it('should throw NotFoundException if product not found', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1' }] }) // seller
-        .mockResolvedValueOnce({ rows: [] }); // product not found
+        .mockResolvedValueOnce({ rows: [{ id: 's1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       await expect(
         service.updateProduct('p1', 'user1', { name: 'X' } as any, {} as any),
       ).rejects.toThrow(NotFoundException);
@@ -135,8 +127,8 @@ describe('SellerService', () => {
 
     it('should throw BadRequestException if no fields to update', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1' }] }) // seller
-        .mockResolvedValueOnce({ rows: [{ id: 'p1' }] }); // product
+        .mockResolvedValueOnce({ rows: [{ id: 's1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'p1' }] });
       await expect(
         service.updateProduct('p1', 'user1', {} as any, {} as any),
       ).rejects.toThrow(BadRequestException);

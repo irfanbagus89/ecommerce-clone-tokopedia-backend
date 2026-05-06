@@ -16,7 +16,7 @@ class VariantDto {
 
   @Type(() => Number)
   @IsNumber()
-  price: number; // additional_price
+  price: number;
 
   @Type(() => Number)
   @IsNumber()
@@ -38,7 +38,7 @@ export class CreateDto {
 
   @Type(() => Number)
   @IsNumber()
-  price: number; // original_price
+  price: number;
 
   @IsArray()
   @ValidateNested({ each: true })

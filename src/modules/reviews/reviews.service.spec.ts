@@ -43,9 +43,6 @@ describe('ReviewsService', () => {
     }).compile();
     service = module.get<ReviewsService>(ReviewsService);
   });
-
-  // ─── createReview ─────────────────────────────────────────────────────────
-  // Signature: createReview(userId, orderId, productId, rating, variantId?, comment?)
   describe('createReview', () => {
     it('should throw NotFoundException if order not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -65,8 +62,8 @@ describe('ReviewsService', () => {
 
     it('should throw BadRequestException if product not in order', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ status: 'completed' }] }) // order OK
-        .mockResolvedValueOnce({ rows: [] }); // product not in order
+        .mockResolvedValueOnce({ rows: [{ status: 'completed' }] })
+        .mockResolvedValueOnce({ rows: [] });
       await expect(
         service.createReview('user1', 'order1', 'prod1', 5),
       ).rejects.toThrow(BadRequestException);
@@ -74,9 +71,9 @@ describe('ReviewsService', () => {
 
     it('should throw ConflictException if review already exists', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ status: 'completed' }] }) // order OK
-        .mockResolvedValueOnce({ rows: [{ id: 'oi1' }] }) // product in order
-        .mockResolvedValueOnce({ rows: [{ id: 'r1' }] }); // existing review
+        .mockResolvedValueOnce({ rows: [{ status: 'completed' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'oi1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'r1' }] });
       await expect(
         service.createReview('user1', 'order1', 'prod1', 5),
       ).rejects.toThrow(ConflictException);
@@ -84,10 +81,10 @@ describe('ReviewsService', () => {
 
     it('should create review successfully', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ status: 'completed' }] }) // order OK
-        .mockResolvedValueOnce({ rows: [{ id: 'oi1' }] }) // product in order
-        .mockResolvedValueOnce({ rows: [] }) // no existing review
-        .mockResolvedValueOnce({ rows: [{ id: 'rv1' }] }); // insert review
+        .mockResolvedValueOnce({ rows: [{ status: 'completed' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'oi1' }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'rv1' }] });
       const result = await service.createReview(
         'user1',
         'order1',
@@ -99,8 +96,6 @@ describe('ReviewsService', () => {
       expect(result).toHaveProperty('review_id', 'rv1');
     });
   });
-
-  // ─── uploadReviewImages ───────────────────────────────────────────────────
   describe('uploadReviewImages', () => {
     it('should throw NotFoundException if review not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -120,8 +115,8 @@ describe('ReviewsService', () => {
 
     it('should throw BadRequestException if image limit exceeded', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 'rv1', user_id: 'user1' }] }) // review check
-        .mockResolvedValueOnce({ rows: [{ count: '4' }] }); // already 4 images
+        .mockResolvedValueOnce({ rows: [{ id: 'rv1', user_id: 'user1' }] })
+        .mockResolvedValueOnce({ rows: [{ count: '4' }] });
       const files = [
         { originalname: 'a.jpg', buffer: Buffer.from('') },
         { originalname: 'b.jpg', buffer: Buffer.from('') },
@@ -133,10 +128,10 @@ describe('ReviewsService', () => {
 
     it('should upload images successfully', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 'rv1', user_id: 'user1' }] }) // review check
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // current count
-        .mockResolvedValueOnce({ rows: [{ exists: true }] }) // cloudinary_public_id column
-        .mockResolvedValueOnce({ rows: [] }); // insert image
+        .mockResolvedValueOnce({ rows: [{ id: 'rv1', user_id: 'user1' }] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+        .mockResolvedValueOnce({ rows: [{ exists: true }] })
+        .mockResolvedValueOnce({ rows: [] });
       const files = [
         { originalname: 'a.jpg', buffer: Buffer.from('test') },
       ] as Express.Multer.File[];
@@ -144,8 +139,6 @@ describe('ReviewsService', () => {
       expect(result).toHaveProperty('message');
     });
   });
-
-  // ─── markHelpful ─────────────────────────────────────────────────────────
   describe('markHelpful', () => {
     it('should throw NotFoundException if review does not exist', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -156,8 +149,8 @@ describe('ReviewsService', () => {
 
     it('should throw ConflictException if already voted', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 'rv1' }] }) // review exists
-        .mockResolvedValueOnce({ rows: [{ id: 'vote1' }] }); // already voted
+        .mockResolvedValueOnce({ rows: [{ id: 'rv1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'vote1' }] });
       await expect(service.markHelpful('rv1', 'user1')).rejects.toThrow(
         ConflictException,
       );
@@ -165,13 +158,13 @@ describe('ReviewsService', () => {
 
     it('should mark review as helpful', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 'rv1' }] }) // review exists
-        .mockResolvedValueOnce({ rows: [] }); // no existing vote
+        .mockResolvedValueOnce({ rows: [{ id: 'rv1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({}) // INSERT vote
-        .mockResolvedValueOnce({}) // UPDATE helpful_count
-        .mockResolvedValueOnce({}); // COMMIT
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({});
       const result = await service.markHelpful('rv1', 'user1');
       expect(result).toHaveProperty('message');
     });

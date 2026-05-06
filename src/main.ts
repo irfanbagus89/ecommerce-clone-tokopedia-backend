@@ -15,8 +15,6 @@ async function bootstrap() {
     type: VersioningType.URI,
   });
   app.use(cookieParser());
-
-  // Enable CORS
   app.enableCors({
     origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],
     credentials: true,
@@ -27,8 +25,6 @@ async function bootstrap() {
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads/',
   });
-
-  // Apply global pipes
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -41,8 +37,6 @@ async function bootstrap() {
   );
 
   app.useGlobalInterceptors(new TransformInterceptor());
-
-  // Apply global filters
   app.useGlobalFilters(new HttpExceptionFilter());
 
   await app.listen(process.env.PORT ?? 3000);

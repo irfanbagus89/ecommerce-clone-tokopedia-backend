@@ -32,9 +32,7 @@ export class CartsService {
       [userId, sellerId],
     );
     const exitistingCheckCartItem = checkCartItem.rows[0];
-    // Pengecakan apakah item sudah ada di cart
     if (!exitistingCheckCartItem) {
-      // Jika item belum ada, buat cart baru dan tambahkan item
       const createCart = await this.db.query<{ id: string }>(
         'INSERT INTO carts (user_id) VALUES ($1) RETURNING id',
         [userId],
@@ -63,7 +61,6 @@ export class CartsService {
         message: 'Product berhasil ditambahkan',
       };
     } else {
-      // Jika item sudah ada, perbarui kuantitas cart item jika produk dan varian sama atau buat item baru jika berbeda
       const checkCartProductItem = await this.db.query<{
         id: string;
         quantity_item: number;
@@ -75,7 +72,6 @@ export class CartsService {
 
       const existingCartProductItem = checkCartProductItem.rows[0];
       if (existingCartProductItem) {
-        //   Jika produk dan varian sudah ada di cart, perbarui kuantitasnya
         const checkStock = await this.db.query<{ stock: number }>(
           'SELECT stock FROM product_variants WHERE id = $1',
           [variantId],
@@ -123,7 +119,6 @@ export class CartsService {
           message: 'Product berhasil diperbarui',
         };
       } else {
-        //   Jika produk atau varian berbeda, buat item cart baru
         const checkStock = await this.db.query<{ stock: number }>(
           'SELECT stock FROM product_variants WHERE id = $1',
           [variantId],

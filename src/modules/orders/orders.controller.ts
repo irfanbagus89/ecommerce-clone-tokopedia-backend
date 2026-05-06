@@ -20,8 +20,6 @@ import { OrdersService } from './orders.service';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  // ─── Buyer ─────────────────────────────────────────────────────────────────
-
   @Post('checkout-preview')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
@@ -100,8 +98,6 @@ export class OrdersController {
     return this.ordersService.cancelOrder(orderId, userId);
   }
 
-  // ─── Seller ────────────────────────────────────────────────────────────────
-
   @Get('seller')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('seller')
@@ -145,8 +141,6 @@ export class OrdersController {
     );
   }
 
-  // ─── Shared ────────────────────────────────────────────────────────────────
-
   @Get(':id/history')
   @UseGuards(JwtAuthGuard)
   getOrderHistory(
@@ -155,8 +149,6 @@ export class OrdersController {
   ) {
     return this.ordersService.getOrderHistory(orderId, userId);
   }
-
-  // ─── Webhook ───────────────────────────────────────────────────────────────
 
   @Post('midtrans/webhook')
   async midtransWebhook(@Body() payload: Record<string, unknown>) {

@@ -14,8 +14,6 @@ describe('ChatService', () => {
     }).compile();
     service = module.get<ChatService>(ChatService);
   });
-
-  // ─── getConversations ─────────────────────────────────────────────────────
   describe('getConversations', () => {
     it('should return list of conversations with mapped unread_count', async () => {
       mockDb.query.mockResolvedValueOnce({
@@ -33,8 +31,6 @@ describe('ChatService', () => {
       expect(result[0].unread_count).toBe(3);
     });
   });
-
-  // ─── getMessages ──────────────────────────────────────────────────────────
   describe('getMessages', () => {
     it('should throw NotFoundException if conversation not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -56,17 +52,15 @@ describe('ChatService', () => {
       mockDb.query
         .mockResolvedValueOnce({
           rows: [{ id: 'c1', buyer_id: 'user1', seller_user_id: 'seller1' }],
-        }) // conversation
-        .mockResolvedValueOnce({ rows: [{ id: 'm1', message: 'Hello' }] }) // messages
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // mark as read
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] }); // total
+        })
+        .mockResolvedValueOnce({ rows: [{ id: 'm1', message: 'Hello' }] })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] });
       const result = await service.getMessages('c1', 'user1', 1, 30);
       expect(result).toHaveProperty('data');
       expect(result.total).toBe(1);
     });
   });
-
-  // ─── startOrGetConversation ───────────────────────────────────────────────
   describe('startOrGetConversation', () => {
     it('should throw NotFoundException if seller not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -77,23 +71,21 @@ describe('ChatService', () => {
 
     it('should return existing conversation', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 'seller1' }] }) // seller exists
-        .mockResolvedValueOnce({ rows: [{ id: 'c1' }] }); // existing conv
+        .mockResolvedValueOnce({ rows: [{ id: 'seller1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'c1' }] });
       const result = await service.startOrGetConversation('buyer1', 'seller1');
       expect(result).toHaveProperty('is_new', false);
     });
 
     it('should create new conversation', async () => {
       mockDb.query
-        .mockResolvedValueOnce({ rows: [{ id: 'seller1' }] }) // seller exists
-        .mockResolvedValueOnce({ rows: [] }) // no existing conv
-        .mockResolvedValueOnce({ rows: [{ id: 'c2' }] }); // create
+        .mockResolvedValueOnce({ rows: [{ id: 'seller1' }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'c2' }] });
       const result = await service.startOrGetConversation('buyer1', 'seller1');
       expect(result).toHaveProperty('is_new', true);
     });
   });
-
-  // ─── sendMessage ──────────────────────────────────────────────────────────
   describe('sendMessage', () => {
     it('should throw NotFoundException if conversation not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
@@ -115,15 +107,13 @@ describe('ChatService', () => {
       mockDb.query
         .mockResolvedValueOnce({
           rows: [{ id: 'c1', buyer_id: 'user1', seller_user_id: 'seller1' }],
-        }) // conv
-        .mockResolvedValueOnce({ rows: [{ id: 'm1' }] }) // insert message
-        .mockResolvedValueOnce({ rows: [] }); // update conv updated_at
+        })
+        .mockResolvedValueOnce({ rows: [{ id: 'm1' }] })
+        .mockResolvedValueOnce({ rows: [] });
       const result = await service.sendMessage('c1', 'user1', 'Hello!');
       expect(result).toHaveProperty('message_id', 'm1');
     });
   });
-
-  // ─── getUnreadCount ───────────────────────────────────────────────────────
   describe('getUnreadCount', () => {
     it('should return unread count', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [{ count: '5' }] });
@@ -131,8 +121,6 @@ describe('ChatService', () => {
       expect(result).toHaveProperty('unread_count', 5);
     });
   });
-
-  // ─── deleteConversation ───────────────────────────────────────────────────
   describe('deleteConversation', () => {
     it('should throw NotFoundException if conversation not found', async () => {
       mockDb.query.mockResolvedValueOnce({ rows: [] });
