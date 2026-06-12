@@ -10,6 +10,13 @@ export interface GoogleProfile {
   avatar: string | null;
 }
 
+export const isGoogleOAuthConfigured = (configService: ConfigService) =>
+  Boolean(
+    configService.get<string>('GOOGLE_CLIENT_ID') &&
+      configService.get<string>('GOOGLE_CLIENT_SECRET') &&
+      configService.get<string>('GOOGLE_CALLBACK_URL'),
+  );
+
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(private configService: ConfigService) {
