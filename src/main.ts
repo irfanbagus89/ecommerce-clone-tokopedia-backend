@@ -9,6 +9,12 @@ import { HttpExceptionFilter, TransformInterceptor } from './common';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const corsOrigins = [
+    frontendUrl,
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+  ];
 
   app.setGlobalPrefix('api');
   app.enableVersioning({
@@ -16,7 +22,7 @@ async function bootstrap() {
   });
   app.use(cookieParser());
   app.enableCors({
-    origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
