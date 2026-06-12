@@ -10,11 +10,13 @@ import { HttpExceptionFilter, TransformInterceptor } from './common';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-  const corsOrigins = [
-    frontendUrl,
-    'http://localhost:3001',
-    'http://127.0.0.1:3001',
-  ];
+  const corsOrigins = (
+    process.env.CORS_ORIGINS ||
+    `${frontendUrl},http://localhost:3001,http://127.0.0.1:3001`
+  )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
   app.setGlobalPrefix('api');
   app.enableVersioning({
