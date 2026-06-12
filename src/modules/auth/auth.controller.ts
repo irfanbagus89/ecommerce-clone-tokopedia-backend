@@ -9,16 +9,19 @@ import {
   Patch,
   UploadedFile,
   UseInterceptors,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto, UpdateProfileDto } from './dto/update-profile.dto';
 import { BasicAuthGuard } from 'src/common/guards/basic-auth.guard';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { GoogleAuthGuard } from 'src/common/guards/google-auth.guard';
 import { CurrentUser } from 'src/common';
+import { GoogleProfile } from './strategies/google.strategy';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
@@ -88,6 +91,31 @@ export class AuthController {
       dto.old_password,
       dto.new_password,
     );
+  }
+
+  @Get('google')
+  @UseGuards(GoogleAuthGuard)
+  googleLogin() {
+    // redirect ke Google, ditangani oleh Passport
+  }
+
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  async googleCallback(
+    @Req() req: Request & { user: GoogleProfile },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.loginWithGoogle(req.user);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+
+    res.cookie('accessToken', result.access_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+
+    res.redirect(`${frontendUrl}/auth/callback?token=${result.access_token}`);
   }
 
   @Post('logout')

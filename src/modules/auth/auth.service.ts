@@ -14,6 +14,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { hashPassword, verifyPassword } from 'src/common';
 import { CloudinaryService } from 'src/common';
+import { GoogleProfile } from './strategies/google.strategy';
 
 @Injectable()
 export class AuthService {
@@ -219,6 +220,46 @@ export class AuthService {
     );
 
     return { message: 'Password changed successfully' };
+  }
+
+  async loginWithGoogle(googleProfile: GoogleProfile): Promise<{
+    access_token: string;
+    user: { id: string; email: string; role: string };
+  }> {
+    const { rows } = await this.db.query<{
+      id: string;
+      email: string;
+      role: string;
+    }>('SELECT id, email, role FROM users WHERE email = $1', [
+      googleProfile.email,
+    ]);
+
+    let user = rows[0];
+
+    if (!user) {
+      const insertResult = await this.db.query<{
+        id: string;
+        email: string;
+        role: string;
+      }>(
+        `INSERT INTO users (email, name, avatar, password)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, email, role`,
+        [googleProfile.email, googleProfile.name, googleProfile.avatar, ''],
+      );
+      user = insertResult.rows[0];
+    }
+
+    const accessToken = this.generateAccessToken(
+      user.id,
+      user.email,
+      user.role,
+    );
+
+    return {
+      access_token: accessToken,
+      user: { id: user.id, email: user.email, role: user.role },
+    };
   }
 
   private generateAccessToken(
